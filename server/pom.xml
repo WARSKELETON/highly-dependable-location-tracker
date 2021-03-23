@@ -1,0 +1,73 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<!-- http://maven.apache.org/pom.html#Quick_Overview -->
+
+	<groupId>example.grpc</groupId>
+	<artifactId>hello-grpc-server</artifactId>
+	<version>1.0.0-SNAPSHOT</version>
+	<packaging>jar</packaging>
+
+	<name>${project.artifactId}</name>
+
+	<properties>
+		<!-- compiler properties -->
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+		<java.version>1.8</java.version><!-- also compatible with 11 -->
+		<maven-compiler-plugin.version>3.8.1</maven-compiler-plugin.version>
+
+		<exec-maven-plugin.version>3.0.0</exec-maven-plugin.version>
+
+		<!-- application properties -->
+		<mainclass>example.grpc.server.HelloServer</mainclass>
+
+		<server.port>8080</server.port>
+	</properties>
+
+	<dependencies>
+		<!-- contract brings gRPC dependencies with it -->
+		<dependency>
+			<groupId>example.grpc</groupId>
+			<artifactId>hello-grpc-contract</artifactId>
+			<version>1.0.0-SNAPSHOT</version>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<!-- Plugin used to compile the sources of your project. Java 9 requires 
+				at least version 3.7.0 to properly handle modules. -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<version>${maven-compiler-plugin.version}</version>
+				<configuration>
+					<source>${java.version}</source>
+					<target>${java.version}</target>
+				</configuration>
+			</plugin>
+			<!-- Plugin that provides two goals to execute system and Java programs -->
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>exec-maven-plugin</artifactId>
+				<version>${exec-maven-plugin.version}</version>
+				<executions>
+					<execution>
+						<goals>
+							<goal>java</goal>
+						</goals>
+					</execution>
+				</executions>
+				<configuration>
+					<mainClass>${mainclass}</mainClass>
+					<arguments>
+						<argument>${server.port}</argument>
+					</arguments>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+</project>

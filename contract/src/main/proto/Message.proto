@@ -1,0 +1,20 @@
+//
+// Protocol buffers definition for Hello World
+//
+syntax = "proto3";
+package example.grpc;
+
+// Request payload
+message MessageRequest {
+  string content = 1;
+  string signature = 2;
+}
+
+message MessageResponse {
+  string content = 1;
+  string signature = 2;
+}
+
+service MessageService {
+  rpc greeting(MessageRequest) returns (MessageResponse);
+}
