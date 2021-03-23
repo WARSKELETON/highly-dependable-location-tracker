@@ -3,12 +3,14 @@
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<!-- http://maven.apache.org/pom.html#Quick_Overview -->
+	<parent>
+		<groupId>pt.tecnico.hdlt.T25</groupId>
+		<artifactId>location-tracker</artifactId>
+		<version>1.0.0-SNAPSHOT</version>
+	</parent>
 
-	<groupId>example.grpc</groupId>
-	<artifactId>hello-grpc-server</artifactId>
-	<version>1.0.0-SNAPSHOT</version>
+	<artifactId>location-tracker-server</artifactId>
 	<packaging>jar</packaging>
-
 	<name>${project.artifactId}</name>
 
 	<properties>
@@ -22,7 +24,7 @@
 		<exec-maven-plugin.version>3.0.0</exec-maven-plugin.version>
 
 		<!-- application properties -->
-		<mainclass>example.grpc.server.HelloServer</mainclass>
+		<mainclass>pt.tecnico.hdlt.T25.server.Server</mainclass>
 
 		<server.port>8080</server.port>
 	</properties>
@@ -30,8 +32,8 @@
 	<dependencies>
 		<!-- contract brings gRPC dependencies with it -->
 		<dependency>
-			<groupId>example.grpc</groupId>
-			<artifactId>hello-grpc-contract</artifactId>
+			<groupId>${project.groupId}</groupId>
+			<artifactId>location-tracker-contract</artifactId>
 			<version>1.0.0-SNAPSHOT</version>
 		</dependency>
 	</dependencies>

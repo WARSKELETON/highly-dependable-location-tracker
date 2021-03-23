@@ -1,13 +1,12 @@
-package example.grpc.server;
+package pt.tecnico.hdlt.T25.server;
 
 import io.grpc.BindableService;
-import io.grpc.Server;
 import io.grpc.ServerBuilder;
 
-public class HelloServer {
+public class Server {
 
 	public static void main(String[] args) throws Exception {
-		System.out.println(HelloServer.class.getSimpleName());
+		System.out.println(Server.class.getSimpleName());
 
 		System.out.printf("Received %d arguments%n", args.length);
 		for (int i = 0; i < args.length; i++) {
@@ -16,14 +15,14 @@ public class HelloServer {
 
 		if (args.length < 1) {
 			System.err.println("Argument(s) missing!");
-			System.err.printf("Usage: java %s port%n", Server.class.getName());
+			System.err.printf("Usage: java %s port%n", io.grpc.Server.class.getName());
 			return;
 		}
 
 		final int port = Integer.parseInt(args[0]);
 		final BindableService impl = new MessageServiceImpl();
 
-		Server server = ServerBuilder.forPort(port).addService(impl).build();
+		io.grpc.Server server = ServerBuilder.forPort(port).addService(impl).build();
 
 		server.start();
 

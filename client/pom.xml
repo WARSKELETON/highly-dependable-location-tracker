@@ -4,11 +4,14 @@
 	<modelVersion>4.0.0</modelVersion>
 	<!-- http://maven.apache.org/pom.html#Quick_Overview -->
 
-	<groupId>example.grpc</groupId>
-	<artifactId>hello-grpc-client</artifactId>
-	<version>1.0.0-SNAPSHOT</version>
-	<packaging>jar</packaging>
+	<parent>
+		<groupId>pt.tecnico.hdlt.T25</groupId>
+		<artifactId>location-tracker</artifactId>
+		<version>1.0.0-SNAPSHOT</version>
+	</parent>
 
+	<artifactId>location-tracker-client</artifactId>
+	<packaging>jar</packaging>
 	<name>${project.artifactId}</name>
 
 	<properties>
@@ -22,7 +25,7 @@
 		<exec-maven-plugin.version>3.0.0</exec-maven-plugin.version>
 
 		<!-- application properties -->
-		<mainclass>example.grpc.client.HelloClient</mainclass>
+		<mainclass>pt.tecnico.hdlt.T25.client.Client</mainclass>
 
 		<server.host>localhost</server.host>
 		<server.port>8080</server.port>
@@ -31,8 +34,8 @@
 	<dependencies>
 		<!-- contract brings gRPC dependencies with it -->
 		<dependency>
-			<groupId>example.grpc</groupId>
-			<artifactId>hello-grpc-contract</artifactId>
+			<groupId>${project.groupId}</groupId>
+			<artifactId>location-tracker-contract</artifactId>
 			<version>1.0.0-SNAPSHOT</version>
 		</dependency>
 	</dependencies>
