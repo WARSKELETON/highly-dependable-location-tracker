@@ -78,6 +78,24 @@ public class Client {
                 .collect(Collectors.toList());
     }
 
+    private void requestLocationProof(int ep) {
+        Location location = systemInfo.getGrid().stream()
+                .filter(location1 -> location1.getEp() == ep && location1.getUserId() == clientId)
+                .collect(Collectors.toList())
+                .get(0);
+        List<Integer> nearbyUsers = getNearbyUsers(location);
+
+        Proximity.LocationProofRequest request = Proximity.LocationProofRequest.newBuilder()
+                .setContent(location.toJsonString())
+                .build();
+
+        System.out.println(nearbyUsers.size());
+        for (int otherUserId : nearbyUsers) {
+            System.out.println(otherUserId);
+            Proximity.LocationProofResponse response = proximityServiceStubs.get(otherUserId).requestLocationProof(request);
+        }
+    }
+
     private void parseCommand(String cmd) {
         String[] args = cmd.split(" ");
 
@@ -87,21 +105,7 @@ public class Client {
 
         if (args[0].equals(LOCATION_PROOF_REQUEST)) {
             int ep = Integer.parseInt(args[1]);
-            Location location = systemInfo.getGrid().stream()
-                    .filter(location1 -> location1.getEp() == ep && location1.getUserId() == clientId)
-                    .collect(Collectors.toList())
-                    .get(0);
-            List<Integer> nearbyUsers = getNearbyUsers(location);
-
-            Proximity.LocationProofRequest request = Proximity.LocationProofRequest.newBuilder()
-                    .setContent(location.toJsonString())
-                    .build();
-
-            System.out.println(nearbyUsers.size());
-            for (int otherUserId : nearbyUsers) {
-                System.out.println(otherUserId);
-                Proximity.LocationProofResponse response = proximityServiceStubs.get(otherUserId).proof(request);
-            }
+            requestLocationProof(ep);
         }
 
         else

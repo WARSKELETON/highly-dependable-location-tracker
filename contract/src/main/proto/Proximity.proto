@@ -13,5 +13,5 @@ message LocationProofResponse {
 }
 
 service ProximityService {
-  rpc proof(LocationProofRequest) returns (LocationProofResponse);
+  rpc requestLocationProof(LocationProofRequest) returns (LocationProofResponse);
 }

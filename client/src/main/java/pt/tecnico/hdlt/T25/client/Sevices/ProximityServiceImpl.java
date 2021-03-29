@@ -7,7 +7,7 @@ import pt.tecnico.hdlt.T25.ProximityServiceGrpc;
 public class ProximityServiceImpl extends ProximityServiceGrpc.ProximityServiceImplBase {
 
     @Override
-    public void proof(Proximity.LocationProofRequest request, StreamObserver<Proximity.LocationProofResponse> responseObserver) {
+    public void requestLocationProof(Proximity.LocationProofRequest request, StreamObserver<Proximity.LocationProofResponse> responseObserver) {
 
         System.out.println("CONANANANANNAAN");
         String messageContent = "{message: \"Ola, Boa tarde\", nota: 20}";
