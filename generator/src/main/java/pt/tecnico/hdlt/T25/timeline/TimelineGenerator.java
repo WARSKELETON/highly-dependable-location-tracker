@@ -6,7 +6,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.org.apache.xpath.internal.operations.Bool;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -14,21 +16,32 @@ import java.util.Random;
 
 public class TimelineGenerator {
 
-    private static void displayGrid(int gridSize, int step, Map<ObjectNode, Integer> positionsToUserId) {
+    private static void displayGrid(int gridSize, int step, int maxEp, Map<ObjectNode, Integer> positionsToUserId) throws FileNotFoundException {
         ObjectMapper objectMapper = new ObjectMapper();
+        PrintStream fileStream = new PrintStream("grid_timeline.txt");
+        System.setOut(fileStream);
 
-        for (int i = 0; i < gridSize; i+= step) {
-            for (int j = 0; j < gridSize; j+= step) {
-                ObjectNode displayNode = objectMapper.createObjectNode();
-                displayNode.put("lat", j);
-                displayNode.put("lon", i);
+        for (int ep = 0; ep < maxEp; ep++) {
+            System.out.println("Epoch: " + ep);
+            System.out.println();
 
-                String pos = positionsToUserId.get(displayNode) != null ? String.valueOf(positionsToUserId.get(displayNode)) : "";
+            for (int i = 0; i < gridSize; i+= step) {
+                for (int j = 0; j < gridSize; j+= step) {
+                    ObjectNode displayNode = objectMapper.createObjectNode();
+                    displayNode.put("lat", j);
+                    displayNode.put("lon", i);
+                    displayNode.put("ep", ep);
 
-                System.out.print(String.format("|%3s  ", pos));
+                    String pos = positionsToUserId.get(displayNode) != null ? String.valueOf(positionsToUserId.get(displayNode)) : "";
+
+                    System.out.print(String.format("|%3s  ", pos));
+                }
+                System.out.println("|");
             }
-            System.out.println("|");
+            System.out.println();
+            System.out.println();
         }
+
     }
 
     private static void generateTimeline(int gridSize, int numberOfUsers, int step, int maxEp) throws IOException {
@@ -49,12 +62,13 @@ public class TimelineGenerator {
 
                 ObjectNode displayNode = objectMapper.createObjectNode();
 
-                if (ep == 0) {
-                    displayNode.put("lat", positions.get(latIndex));
-                    displayNode.put("lon", positions.get(lonIndex));
-                    positionsToUserId.put(displayNode, user);
-                    System.out.println("User" + user + " at " + positions.get(latIndex) + ", " + positions.get(lonIndex));
-                }
+
+                displayNode.put("lat", positions.get(latIndex));
+                displayNode.put("lon", positions.get(lonIndex));
+                displayNode.put("ep", ep);
+                positionsToUserId.put(displayNode, user);
+                System.out.println("User" + user + " at " + positions.get(latIndex) + ", " + positions.get(lonIndex) + " at Epoch " + ep);
+
 
                 ObjectNode gridNode = objectMapper.createObjectNode();
                 gridNode.put("userId", user);
@@ -75,7 +89,7 @@ public class TimelineGenerator {
         objectMapper.writeValue(new File("grid.json"), node);
 
         // Display grid for epoch 0
-        displayGrid(gridSize, step, positionsToUserId);
+        displayGrid(gridSize, step, maxEp, positionsToUserId);
 
         // Convert JSON -> Object
         /*List<Location> location = objectMapper.readValue(new File("test.json"), new TypeReference<List<Location>>(){});
