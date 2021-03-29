@@ -11,3 +11,7 @@ message LocationProofRequest {
 message LocationProofResponse {
     string content = 1;
 }
+
+service ProximityService {
+  rpc proof(LocationProofRequest) returns (LocationProofResponse);
+}

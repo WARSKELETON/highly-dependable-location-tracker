@@ -27,17 +27,23 @@ public class TimelineGenerator {
                 int lat = new Random().nextInt(positions.size());
                 int lon = new Random().nextInt(positions.size());
 
-                ObjectNode node = objectMapper.createObjectNode();
-                node.put("userId", user);
-                node.put("ep", ep);
-                node.put("latitude", lat);
-                node.put("longitude", lon);
+                ObjectNode gridNode = objectMapper.createObjectNode();
+                gridNode.put("userId", user);
+                gridNode.put("ep", ep);
+                gridNode.put("latitude", lat);
+                gridNode.put("longitude", lon);
 
-                arrayNode.add(node);
+                arrayNode.add(gridNode);
             }
         }
 
-        objectMapper.writeValue(new File("grid.json"), arrayNode);
+        ObjectNode node = objectMapper.createObjectNode();
+        node.set("grid", arrayNode);
+        node.put("numberOfUsers", numberOfUsers);
+        node.put("step", step);
+        node.put("maxEp", maxEp);
+
+        objectMapper.writeValue(new File("grid.json"), node);
 
         // Convert JSON -> Object
         /*List<Location> location = objectMapper.readValue(new File("test.json"), new TypeReference<List<Location>>(){});

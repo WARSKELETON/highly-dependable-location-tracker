@@ -25,8 +25,6 @@ public class Crypto {
         String absolutePath = file.getAbsolutePath();
         byte[] keyBytes = Files.readAllBytes(Paths.get(absolutePath));
 
-        System.out.println("Abssssssss " + absolutePath);
-
         PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(keyBytes);
         KeyFactory kf = KeyFactory.getInstance("RSA");
         return (RSAPrivateKey) kf.generatePrivate(spec);
