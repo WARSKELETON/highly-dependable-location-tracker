@@ -1,5 +1,6 @@
 package pt.tecnico.hdlt.T25.client.Domain;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.BindableService;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
@@ -41,7 +42,7 @@ public class Client {
         int numberOfUsers = systemInfo.getNumberOfUsers();
 
         // Open "Server" for other Clients
-        final BindableService proximityService = new ProximityServiceImpl();
+        final BindableService proximityService = new ProximityServiceImpl(this);
         io.grpc.Server proximityServer = ServerBuilder.forPort(CLIENT_ORIGINAL_PORT + clientId).addService(proximityService).build();
         proximityServer.start();
 
@@ -83,16 +84,20 @@ public class Client {
                 .filter(location1 -> location1.getEp() == ep && location1.getUserId() == clientId)
                 .collect(Collectors.toList())
                 .get(0);
+
         List<Integer> nearbyUsers = getNearbyUsers(location);
 
-        Proximity.LocationProofRequest request = Proximity.LocationProofRequest.newBuilder()
-                .setContent(location.toJsonString())
-                .build();
-
         System.out.println(nearbyUsers.size());
-        for (int otherUserId : nearbyUsers) {
-            System.out.println(otherUserId);
-            Proximity.LocationProofResponse response = proximityServiceStubs.get(otherUserId).requestLocationProof(request);
+        for (int witnessId : nearbyUsers) {
+            System.out.println(String.format("Sending Location Proof Request to %s...", witnessId));
+
+            LocationProof locationProof = new LocationProof(location.getUserId(), location.getEp(), location.getLatitude(), location.getLongitude(), witnessId);
+            Proximity.LocationProofRequest request = Proximity.LocationProofRequest.newBuilder()
+                    .setContent(locationProof.toJsonString())
+                    .build();
+
+            Proximity.LocationProofResponse response = proximityServiceStubs.get(witnessId).requestLocationProof(request);
+            System.out.println(String.format("Received Proof from %s...", witnessId));
         }
     }
 
@@ -132,5 +137,36 @@ public class Client {
         } finally {
             System.out.println("> Closing");
         }
+    }
+
+    private Location getMyLocation(int ep) {
+        return systemInfo.getGrid().stream().filter(location ->
+                location.getEp() == ep &&
+                        location.getUserId() == clientId).collect(Collectors.toList()).get(0);
+    }
+
+    public boolean verifyLocationProofRequest(Proximity.LocationProofRequest request) throws IOException {
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        LocationProof locationProof = objectMapper.readValue(request.getContent(), LocationProof.class);
+
+        int userId = locationProof.getUserId();
+        int epoch = locationProof.getEp();
+        int latitude = locationProof.getLatitude();
+        int longitude = locationProof.getLongitude();
+        int witness = locationProof.getWitnessId();
+
+        System.out.println(String.format("Verifying request from %d...", userId));
+
+        Location myLocation = getMyLocation(epoch);
+
+        return systemInfo.getGrid().stream().filter(location ->
+                location.getEp() == epoch &&
+                        location.getUserId() == userId &&
+                        location.getLatitude() == latitude &&
+                        location.getLongitude() == longitude &&
+                        witness == clientId)
+                .collect(Collectors.toList()).size() == 1 &&
+                isNearby(latitude, longitude, myLocation.getLatitude(), myLocation.getLongitude());
     }
 }

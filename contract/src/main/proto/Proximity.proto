@@ -6,12 +6,15 @@ package pt.tecnico.hdlt.T25;
 
 message LocationProofRequest {
     string content = 1;
+    string signature = 2;
 }
 
 message LocationProofResponse {
     string content = 1;
+    string signature = 2;
 }
 
 service ProximityService {
   rpc requestLocationProof(LocationProofRequest) returns (LocationProofResponse);
 }
+
