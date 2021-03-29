@@ -1,4 +1,4 @@
-package pt.tecnico.hdlt.T25.client.Domain;
+package pt.tecnico.hdlt.T25.timeline;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -11,7 +11,7 @@ import java.util.Random;
 
 public class TimelineGenerator {
 
-    private static void generateTimeline(int gridSize, int numberOfUsers, int step, int maxEp) throws IOException {
+    private static void generateTimeline(int gridSize, int numberOfUsers, int step, int maxEp, String outputFile) throws IOException {
 
         ArrayList<Integer> positions = new ArrayList<>();
 
@@ -37,7 +37,7 @@ public class TimelineGenerator {
             }
         }
 
-        objectMapper.writeValue(new File("test.json"), arrayNode);
+        objectMapper.writeValue(new File(outputFile + "\\client\\resources"), arrayNode);
 
         // Convert JSON -> Object
         /*List<Location> location = objectMapper.readValue(new File("test.json"), new TypeReference<List<Location>>(){});
@@ -49,7 +49,7 @@ public class TimelineGenerator {
 
     public static void main(String[] args) throws Exception {
 
-        if (args.length != 4) {
+        if (args.length != 5) {
             System.err.println("Argument(s) missing!");
             System.err.printf("Usage: java %s grid_size number_of_users step maxEp%n", TimelineGenerator.class.getName());
         }
@@ -58,7 +58,8 @@ public class TimelineGenerator {
         final int numberOfUsers = Integer.parseInt(args[1]);
         final int step = Integer.parseInt(args[2]);
         final int maxEp = Integer.parseInt(args[3]);
+        final String outputFile = args[4];
 
-        generateTimeline(gridSize, numberOfUsers, step, maxEp);
+        generateTimeline(gridSize, numberOfUsers, step, maxEp, outputFile);
     }
 }
