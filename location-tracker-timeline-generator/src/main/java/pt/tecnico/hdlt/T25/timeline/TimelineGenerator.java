@@ -11,7 +11,7 @@ import java.util.Random;
 
 public class TimelineGenerator {
 
-    private static void generateTimeline(int gridSize, int numberOfUsers, int step, int maxEp, String outputFile) throws IOException {
+    private static void generateTimeline(int gridSize, int numberOfUsers, int step, int maxEp) throws IOException {
 
         ArrayList<Integer> positions = new ArrayList<>();
 
@@ -37,7 +37,7 @@ public class TimelineGenerator {
             }
         }
 
-        objectMapper.writeValue(new File(outputFile + "\\client\\resources"), arrayNode);
+        objectMapper.writeValue(new File("grid.json"), arrayNode);
 
         // Convert JSON -> Object
         /*List<Location> location = objectMapper.readValue(new File("test.json"), new TypeReference<List<Location>>(){});
@@ -49,7 +49,7 @@ public class TimelineGenerator {
 
     public static void main(String[] args) throws Exception {
 
-        if (args.length != 5) {
+        if (args.length != 4) {
             System.err.println("Argument(s) missing!");
             System.err.printf("Usage: java %s grid_size number_of_users step maxEp%n", TimelineGenerator.class.getName());
         }
@@ -58,8 +58,7 @@ public class TimelineGenerator {
         final int numberOfUsers = Integer.parseInt(args[1]);
         final int step = Integer.parseInt(args[2]);
         final int maxEp = Integer.parseInt(args[3]);
-        final String outputFile = args[4];
 
-        generateTimeline(gridSize, numberOfUsers, step, maxEp, outputFile);
+        generateTimeline(gridSize, numberOfUsers, step, maxEp);
     }
 }

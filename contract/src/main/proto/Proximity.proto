@@ -1,0 +1,13 @@
+//
+// Protocol buffers definition for Client-Client Communication
+//
+syntax = "proto3";
+package pt.tecnico.hdlt.T25;
+
+message LocationProofRequest {
+    string content = 1;
+}
+
+message LocationProofResponse {
+    string content = 1;
+}

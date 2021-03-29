@@ -9,7 +9,7 @@
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>location-tracker-timeline-generator</artifactId>
+    <artifactId>location-tracker-crypto</artifactId>
     <packaging>jar</packaging>
     <name>${project.artifactId}</name>
 
@@ -24,21 +24,8 @@
         <exec-maven-plugin.version>3.0.0</exec-maven-plugin.version>
 
         <!-- application properties -->
-        <mainclass>pt.tecnico.hdlt.T25.timeline.TimelineGenerator</mainclass>
-
-        <gridSize>100</gridSize>
-        <numberOfUsers>20</numberOfUsers>
-        <step>10</step>
-        <maxEp>6</maxEp>
+        <mainclass>pt.tecnico.hdlt.T25.crypto.Crypto</mainclass>
     </properties>
-
-    <dependencies>
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-            <version>2.10.0.pr2</version>
-        </dependency>
-    </dependencies>
 
     <build>
         <plugins>
@@ -67,12 +54,7 @@
                 </executions>
                 <configuration>
                     <mainClass>${mainclass}</mainClass>
-                    <arguments>
-                        <argument>${gridSize}</argument>
-                        <argument>${numberOfUsers}</argument>
-                        <argument>${step}</argument>
-                        <argument>${maxEp}</argument>
-                    </arguments>
+                    <arguments/>
                 </configuration>
             </plugin>
         </plugins>
