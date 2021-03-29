@@ -9,6 +9,7 @@ public class ProximityServiceImpl extends ProximityServiceGrpc.ProximityServiceI
     @Override
     public void proof(Proximity.LocationProofRequest request, StreamObserver<Proximity.LocationProofResponse> responseObserver) {
 
+        System.out.println("CONANANANANNAAN");
         String messageContent = "{message: \"Ola, Boa tarde\", nota: 20}";
 
         Proximity.LocationProofResponse response = Proximity.LocationProofResponse

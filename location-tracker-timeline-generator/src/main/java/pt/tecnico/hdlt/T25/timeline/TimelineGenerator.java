@@ -3,17 +3,37 @@ package pt.tecnico.hdlt.T25.timeline;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.sun.org.apache.xpath.internal.operations.Bool;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 
 public class TimelineGenerator {
 
-    private static void generateTimeline(int gridSize, int numberOfUsers, int step, int maxEp) throws IOException {
+    private static void displayGrid(int gridSize, int step, Map<ObjectNode, Integer> positionsToUserId) {
+        ObjectMapper objectMapper = new ObjectMapper();
 
+        for (int i = 0; i < gridSize; i+= step) {
+            for (int j = 0; j < gridSize; j+= step) {
+                ObjectNode displayNode = objectMapper.createObjectNode();
+                displayNode.put("lat", j);
+                displayNode.put("lon", i);
+
+                String pos = positionsToUserId.get(displayNode) != null ? String.valueOf(positionsToUserId.get(displayNode)) : "";
+
+                System.out.print(String.format("|%3s  ", pos));
+            }
+            System.out.println("|");
+        }
+    }
+
+    private static void generateTimeline(int gridSize, int numberOfUsers, int step, int maxEp) throws IOException {
         ArrayList<Integer> positions = new ArrayList<>();
+        Map<ObjectNode, Integer> positionsToUserId = new HashMap<>();
 
         for (int i = 0; i <= gridSize; i += step) {
             positions.add(i);
@@ -24,14 +44,23 @@ public class TimelineGenerator {
 
         for (int ep = 0; ep < maxEp; ep++) {
             for (int user = 0; user < numberOfUsers; user++) {
-                int lat = new Random().nextInt(positions.size());
-                int lon = new Random().nextInt(positions.size());
+                int latIndex = new Random().nextInt(positions.size());
+                int lonIndex = new Random().nextInt(positions.size());
+
+                ObjectNode displayNode = objectMapper.createObjectNode();
+
+                if (ep == 0) {
+                    displayNode.put("lat", positions.get(latIndex));
+                    displayNode.put("lon", positions.get(lonIndex));
+                    positionsToUserId.put(displayNode, user);
+                    System.out.println("User" + user + " at " + positions.get(latIndex) + ", " + positions.get(lonIndex));
+                }
 
                 ObjectNode gridNode = objectMapper.createObjectNode();
                 gridNode.put("userId", user);
                 gridNode.put("ep", ep);
-                gridNode.put("latitude", lat);
-                gridNode.put("longitude", lon);
+                gridNode.put("latitude", positions.get(latIndex));
+                gridNode.put("longitude", positions.get(lonIndex));
 
                 arrayNode.add(gridNode);
             }
@@ -44,6 +73,9 @@ public class TimelineGenerator {
         node.put("maxEp", maxEp);
 
         objectMapper.writeValue(new File("grid.json"), node);
+
+        // Display grid for epoch 0
+        displayGrid(gridSize, step, positionsToUserId);
 
         // Convert JSON -> Object
         /*List<Location> location = objectMapper.readValue(new File("test.json"), new TypeReference<List<Location>>(){});

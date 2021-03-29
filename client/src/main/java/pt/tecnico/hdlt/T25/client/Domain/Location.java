@@ -1,5 +1,8 @@
 package pt.tecnico.hdlt.T25.client.Domain;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 public class Location {
 
     private int userId;
@@ -47,5 +50,21 @@ public class Location {
 
     public void setLongitude(int longitude) {
         this.longitude = longitude;
+    }
+
+    public ObjectNode toJson() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        ObjectNode node = objectMapper.createObjectNode();
+
+        node.put("userId", userId);
+        node.put("ep", ep);
+        node.put("latitude", latitude);
+        node.put("longitude", longitude);
+
+        return node;
+    }
+
+    public String toJsonString() {
+        return toJson().toString();
     }
 }

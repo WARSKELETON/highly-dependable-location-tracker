@@ -1,46 +1,53 @@
 package pt.tecnico.hdlt.T25.client;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.grpc.BindableService;
+import io.grpc.ServerBuilder;
 import pt.tecnico.hdlt.T25.Message;
 import pt.tecnico.hdlt.T25.MessageServiceGrpc;
 
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import pt.tecnico.hdlt.T25.client.Domain.Client;
+import pt.tecnico.hdlt.T25.client.Domain.SystemInfo;
+import pt.tecnico.hdlt.T25.client.Sevices.ProximityServiceImpl;
 
+import java.io.File;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 
 import static pt.tecnico.hdlt.T25.crypto.Crypto.*;
 
-public class Client {
+public class ClientApp {
 
 	public static void main(String[] args) throws Exception {
 
 	    String clientPrivKeyFileName = "client-priv.key";
 	    String serverPubKeyFileName = "pub.key";
 
-        System.out.println(Client.class.getSimpleName());
+        System.out.println(ClientApp.class.getSimpleName());
 
 		System.out.printf("Received %d arguments%n", args.length);
 		for (int i = 0; i < args.length; i++) {
 			System.out.printf("arg[%d] = %s%n", i, args[i]);
 		}
 
-		if (args.length < 2) {
+		if (args.length < 3) {
 			System.err.println("Argument(s) missing!");
-			System.err.printf("Usage: java %s host port%n", Client.class.getName());
+			System.err.printf("Usage: java %s serverHost port clientId%n", ClientApp.class.getName());
 			return;
 		}
 
-		final String host = args[0];
-		final int port = Integer.parseInt(args[1]);
-		final String target = host + ":" + port;
+		final String serverHost = args[0];
+		final int serverPort = Integer.parseInt(args[1]);
+		final int clientId = Integer.parseInt(args[2]);
 
-		// Channel is the abstraction to connect to a service endpoint
-		// Let us use plaintext communication because we do not have certificates
-		final ManagedChannel channel = ManagedChannelBuilder.forTarget(target).usePlaintext().build();
+		ObjectMapper objectMapper = new ObjectMapper();
+		SystemInfo systemInfo = objectMapper.readValue(new File("resources/grid.json"), SystemInfo.class);
 
-		MessageServiceGrpc.MessageServiceBlockingStub stub = MessageServiceGrpc.newBlockingStub(channel);
+		Client client = new Client(serverHost, serverPort, clientId, systemInfo);
 
+		/*
 		RSAPublicKey serverPubKey = getPub(serverPubKeyFileName);
 		RSAPrivateKey clientPrivKey = getPriv(clientPrivKeyFileName);
 		String content = encryptAES("friend");
@@ -61,6 +68,7 @@ public class Client {
 
 		// A Channel should be shutdown before stopping the process.
 		channel.shutdownNow();
+		 */
 	}
 
 }
