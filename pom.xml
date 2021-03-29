@@ -38,7 +38,7 @@
 		<module>contract</module>
 		<module>server</module>
 		<module>client</module>
-        <module>location-tracker-timeline-generator</module>
+        <module>generator</module>
         <module>location-tracker-crypto</module>
     </modules>
 
