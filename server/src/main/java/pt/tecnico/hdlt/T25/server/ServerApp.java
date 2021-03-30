@@ -12,14 +12,16 @@ public class ServerApp {
 			System.out.printf("arg[%d] = %s%n", i, args[i]);
 		}
 
-		if (args.length < 1) {
+		if (args.length < 2) {
 			System.err.println("Argument(s) missing!");
 			System.err.printf("Usage: java %s port%n", io.grpc.Server.class.getName());
 			return;
 		}
 
 		final int port = Integer.parseInt(args[0]);
-		Server server = new Server(port);
+		final int numberOfUsers = Integer.parseInt(args[1]);
+		final int step = Integer.parseInt(args[2]);
+		Server server = new Server(port, numberOfUsers, step);
 	}
 
 }

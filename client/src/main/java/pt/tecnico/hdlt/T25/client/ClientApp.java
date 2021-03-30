@@ -12,7 +12,7 @@ public class ClientApp {
 	public static void main(String[] args) throws Exception {
 
 	    String clientPrivKeyFileName = "client-priv.key";
-	    String serverPubKeyFileName = "pub.key";
+	    String serverPubKeyFileName = "server-pub.key";
 
         System.out.println(ClientApp.class.getSimpleName());
 

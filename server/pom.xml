@@ -27,6 +27,8 @@
 		<mainclass>pt.tecnico.hdlt.T25.server.ServerApp</mainclass>
 
 		<server.port>8080</server.port>
+		<numberOfUsers>50</numberOfUsers>
+		<step>50</step>
 	</properties>
 
 	<dependencies>
@@ -84,6 +86,8 @@
 					<mainClass>${mainclass}</mainClass>
 					<arguments>
 						<argument>${server.port}</argument>
+						<argument>${numberOfUsers}</argument>
+						<argument>${step}</argument>
 					</arguments>
 				</configuration>
 			</plugin>

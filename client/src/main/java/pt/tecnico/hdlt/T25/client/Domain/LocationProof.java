@@ -53,6 +53,8 @@ public class LocationProof extends Location {
         node.put("latitude", this.getLatitude());
         node.put("longitude", this.getLongitude());
         node.put("witnessId", this.witnessId);
+        node.put("witnessLatitude", this.witnessLatitude);
+        node.put("witnessLongitude", this.witnessLongitude);
 
         return node;
     }

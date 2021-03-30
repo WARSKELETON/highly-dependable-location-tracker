@@ -22,34 +22,17 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 
 	@Override
 	public void submitLocationReport(LocationServer.SubmitLocationReportRequest request, StreamObserver<LocationServer.SubmitLocationReportResponse> responseObserver) {
-		String privKeyFileName = "priv.key";
-		String pubKeyFileName = "client-pub.key";
-
 		try {
-			RSAPublicKey clientPublicKey = getPub(pubKeyFileName);
-			RSAPrivateKey serverPrivateKey = getPriv(privKeyFileName);
-
-			locationServer.verifyLocationReport(request);
-
-			LocationServer.SubmitLocationReportResponse response = LocationServer.SubmitLocationReportResponse.newBuilder()
-					.setContent("content")
-					.setSignature("signature")
-					.build();
-
-/*			String requestContent = request.getContent();
-			String requestSignature = request.getSignature();
-			String decipheredContent = decryptAES(requestContent);
-			if (verify(requestContent, requestSignature, clientPublicKey)) {
-				System.out.println("Signature verified! Received message -> " + decipheredContent);
-				String content = encryptAES(decipheredContent);
-				response = LocationServer.SubmitLocationReportResponse.newBuilder()
-						.setContent(content)
-						.setSignature(sign(content, serverPrivateKey))
+			if (locationServer.verifyLocationReport(request)) {
+				System.out.println("Location report submitted with success.");
+				LocationServer.SubmitLocationReportResponse response = LocationServer.SubmitLocationReportResponse.newBuilder()
+						.setContent("content")
+						.setSignature("signature")
 						.build();
-			}*/
 
-			responseObserver.onNext(response);
-			responseObserver.onCompleted();
+				responseObserver.onNext(response);
+				responseObserver.onCompleted();
+			}
 		} catch (Exception ex) {
 			System.out.println(ex.getMessage());
 		}
@@ -57,25 +40,8 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 
 	@Override
 	public void obtainLocationReport(LocationServer.ObtainLocationReportRequest request, StreamObserver<LocationServer.ObtainLocationReportResponse> responseObserver) {
-		String privKeyFileName = "priv.key";
-		String pubKeyFileName = "client-pub.key";
-
 		try {
-			RSAPublicKey clientPublicKey = getPub(pubKeyFileName);
-			RSAPrivateKey serverPrivateKey = getPriv(privKeyFileName);
 			LocationServer.ObtainLocationReportResponse response = locationServer.obtainLocationReport(request);
-
-/*			String requestContent = request.getContent();
-			String requestSignature = request.getSignature();
-			String decipheredContent = decryptAES(requestContent);
-			if (verify(requestContent, requestSignature, clientPublicKey)) {
-				System.out.println("Signature verified! Received message -> " + decipheredContent);
-				String content = encryptAES(decipheredContent);
-				response = LocationServer.SubmitLocationReportResponse.newBuilder()
-						.setContent(content)
-						.setSignature(sign(content, serverPrivateKey))
-						.build();
-			}*/
 
 			responseObserver.onNext(response);
 			responseObserver.onCompleted();

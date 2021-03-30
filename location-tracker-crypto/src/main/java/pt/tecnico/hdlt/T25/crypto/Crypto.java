@@ -20,62 +20,99 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class Crypto {
 
-    public static RSAPrivateKey getPriv(String filename) throws Exception {
-        File file = new File("resources/" + filename);
-        String absolutePath = file.getAbsolutePath();
-        byte[] keyBytes = Files.readAllBytes(Paths.get(absolutePath));
+    public static RSAPrivateKey getPriv(String filename) {
 
-        PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(keyBytes);
-        KeyFactory kf = KeyFactory.getInstance("RSA");
-        return (RSAPrivateKey) kf.generatePrivate(spec);
+        try {
+            File file = new File("resources/" + filename);
+            String absolutePath = file.getAbsolutePath();
+            byte[] keyBytes = Files.readAllBytes(Paths.get(absolutePath));
+
+            PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(keyBytes);
+            KeyFactory kf = KeyFactory.getInstance("RSA");
+            return (RSAPrivateKey) kf.generatePrivate(spec);
+        } catch (Exception e) {
+            System.out.println("Failed to get private key.");
+
+        }
+        return null;
     }
 
-    public static RSAPublicKey getPub(String filename) throws Exception {
-        File file = new File("resources/" + filename);
-        String absolutePath = file.getAbsolutePath();
-        byte[] keyBytes = Files.readAllBytes(Paths.get(absolutePath));
+    public static RSAPublicKey getPub(String filename) {
 
-        X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
-        KeyFactory kf = KeyFactory.getInstance("RSA");
-        return (RSAPublicKey) kf.generatePublic(spec);
+        try {
+            File file = new File("resources/" + filename);
+            String absolutePath = file.getAbsolutePath();
+            byte[] keyBytes = Files.readAllBytes(Paths.get(absolutePath));
+
+            X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
+            KeyFactory kf = KeyFactory.getInstance("RSA");
+            return (RSAPublicKey) kf.generatePublic(spec);
+        } catch (Exception e) {
+            System.out.println("Failed to get public key.");
+        }
+        return null;
     }
 
-    public static String encryptRSA(String plainText, PublicKey publicKey) throws Exception {
-        Cipher encryptCipher = Cipher.getInstance("RSA");
-        encryptCipher.init(Cipher.ENCRYPT_MODE, publicKey);
+    public static String encryptRSA(String plainText, PublicKey publicKey) {
+        try {
+            Cipher encryptCipher = Cipher.getInstance("RSA");
+            encryptCipher.init(Cipher.ENCRYPT_MODE, publicKey);
 
-        byte[] cipherText = encryptCipher.doFinal(plainText.getBytes(StandardCharsets.UTF_8));
+            byte[] cipherText = encryptCipher.doFinal(plainText.getBytes(StandardCharsets.UTF_8));
 
-        return Base64.getEncoder().encodeToString(cipherText);
+            return Base64.getEncoder().encodeToString(cipherText);
+        } catch (Exception e) {
+            System.out.println("Failed to encrypt message.");
+        }
+        return null;
     }
 
-    public static String sign(String plainText, PrivateKey privateKey) throws Exception {
-        Signature privateSignature = Signature.getInstance("SHA256withRSA");
-        privateSignature.initSign(privateKey);
-        privateSignature.update(plainText.getBytes(StandardCharsets.UTF_8));
+    public static String sign(String plainText, PrivateKey privateKey) {
 
-        byte[] signature = privateSignature.sign();
+        try {
+            Signature privateSignature = Signature.getInstance("SHA256withRSA");
+            privateSignature.initSign(privateKey);
+            privateSignature.update(plainText.getBytes(StandardCharsets.UTF_8));
 
-        return Base64.getEncoder().encodeToString(signature);
+            byte[] signature = privateSignature.sign();
+
+            return Base64.getEncoder().encodeToString(signature);
+        } catch (Exception e) {
+            System.out.println("Failed to sign message.");
+        }
+        return null;
     }
 
-    public static boolean verify(String plainText, String signature, PublicKey publicKey) throws Exception {
-        Signature publicSignature = Signature.getInstance("SHA256withRSA");
-        publicSignature.initVerify(publicKey);
-        publicSignature.update(plainText.getBytes(UTF_8));
+    public static boolean verify(String plainText, String signature, PublicKey publicKey) {
+        try {
 
-        byte[] signatureBytes = Base64.getDecoder().decode(signature);
+            Signature publicSignature = Signature.getInstance("SHA256withRSA");
+            publicSignature.initVerify(publicKey);
+            publicSignature.update(plainText.getBytes(UTF_8));
 
-        return publicSignature.verify(signatureBytes);
+            byte[] signatureBytes = Base64.getDecoder().decode(signature);
+
+            return publicSignature.verify(signatureBytes);
+
+        } catch (Exception e) {
+            System.out.println("Failed to verify message.");
+        }
+
+        return false;
     }
 
-    public static String decryptRSA(String cipherText, PrivateKey privateKey) throws Exception {
-        byte[] bytes = Base64.getDecoder().decode(cipherText);
+    public static String decryptRSA(String cipherText, PrivateKey privateKey) {
+        try {
+            byte[] bytes = Base64.getDecoder().decode(cipherText);
 
-        Cipher decriptCipher = Cipher.getInstance("RSA");
-        decriptCipher.init(Cipher.DECRYPT_MODE, privateKey);
+            Cipher decriptCipher = Cipher.getInstance("RSA");
+            decriptCipher.init(Cipher.DECRYPT_MODE, privateKey);
 
-        return new String(decriptCipher.doFinal(bytes), UTF_8);
+            return new String(decriptCipher.doFinal(bytes), UTF_8);
+        } catch (Exception e) {
+            System.out.println("Failed to decrypt message.");
+        }
+        return null;
     }
 
     public static String encryptAES(String value) {
