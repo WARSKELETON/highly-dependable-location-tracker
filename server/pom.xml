@@ -24,7 +24,7 @@
 		<exec-maven-plugin.version>3.0.0</exec-maven-plugin.version>
 
 		<!-- application properties -->
-		<mainclass>pt.tecnico.hdlt.T25.server.Server</mainclass>
+		<mainclass>pt.tecnico.hdlt.T25.server.ServerApp</mainclass>
 
 		<server.port>8080</server.port>
 	</properties>
@@ -40,6 +40,18 @@
 			<groupId>${project.groupId}</groupId>
 			<artifactId>location-tracker-crypto</artifactId>
 			<version>1.0.0-SNAPSHOT</version>
+		</dependency>
+		<dependency>
+			<groupId>org.javatuples</groupId>
+			<artifactId>javatuples</artifactId>
+			<version>1.2</version>
+			<scope>compile</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+			<version>2.10.1</version>
+			<scope>compile</scope>
 		</dependency>
 	</dependencies>
 

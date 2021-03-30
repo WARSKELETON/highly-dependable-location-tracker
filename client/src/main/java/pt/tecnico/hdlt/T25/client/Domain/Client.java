@@ -1,11 +1,13 @@
 package pt.tecnico.hdlt.T25.client.Domain;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.BindableService;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.ServerBuilder;
-import pt.tecnico.hdlt.T25.MessageServiceGrpc;
+import pt.tecnico.hdlt.T25.LocationServer;
+import pt.tecnico.hdlt.T25.LocationServerServiceGrpc;
 import pt.tecnico.hdlt.T25.Proximity;
 import pt.tecnico.hdlt.T25.ProximityServiceGrpc;
 import pt.tecnico.hdlt.T25.client.Sevices.ProximityServiceImpl;
@@ -18,20 +20,24 @@ import java.util.stream.Collectors;
 
 public class Client {
     private static final String LOCATION_PROOF_REQUEST = "proof";
+    private static final String SUBMIT_LOCATION_REPORT = "submit";
+    private static final String OBTAIN_LOCATION_REPORT = "obtain";
     private static final int CLIENT_ORIGINAL_PORT = 8000;
 
     private String serverHost;
     private int serverPort;
     private int clientId;
     private final SystemInfo systemInfo;
-    private MessageServiceGrpc.MessageServiceBlockingStub messageServiceStub;
+    private LocationServerServiceGrpc.LocationServerServiceBlockingStub locationServerServiceStub;
     private Map<Integer, ProximityServiceGrpc.ProximityServiceBlockingStub> proximityServiceStubs;
+    private Map<Integer, LocationReport> locationReports;
 
     public Client(String serverHost, int serverPort, int clientId, SystemInfo systemInfo) throws IOException {
         this.clientId = clientId;
         this.serverHost = serverHost;
         this.serverPort = serverPort;
         this.systemInfo = systemInfo;
+        this.locationReports = new HashMap<>();
         this.proximityServiceStubs = new HashMap<>();
         this.connectToClients();
         this.connectToServer();
@@ -61,7 +67,7 @@ public class Client {
     private void connectToServer() {
         String target = serverHost + ":" + serverPort;
         final ManagedChannel channel = ManagedChannelBuilder.forTarget(target).usePlaintext().build();
-        messageServiceStub = MessageServiceGrpc.newBlockingStub(channel);
+        locationServerServiceStub = LocationServerServiceGrpc.newBlockingStub(channel);
     }
 
     private boolean isNearby(double latitude1, double longitude1, double latitude2, double longitude2) {
@@ -80,13 +86,14 @@ public class Client {
     }
 
     private void requestLocationProof(int ep) {
+        Map<Integer, String> locationProofsContent = new HashMap<>();
+        Map<Integer, String> locationProofsSignatures = new HashMap<>();
         Location location = systemInfo.getGrid().stream()
                 .filter(location1 -> location1.getEp() == ep && location1.getUserId() == clientId)
                 .collect(Collectors.toList())
                 .get(0);
 
         List<Integer> nearbyUsers = getNearbyUsers(location);
-
         System.out.println(nearbyUsers.size());
         for (int witnessId : nearbyUsers) {
             System.out.println(String.format("Sending Location Proof Request to %s...", witnessId));
@@ -94,10 +101,64 @@ public class Client {
             LocationProof locationProof = new LocationProof(location.getUserId(), location.getEp(), location.getLatitude(), location.getLongitude(), witnessId);
             Proximity.LocationProofRequest request = Proximity.LocationProofRequest.newBuilder()
                     .setContent(locationProof.toJsonString())
+                    .setSignature(locationProof.toJsonString())
                     .build();
 
             Proximity.LocationProofResponse response = proximityServiceStubs.get(witnessId).requestLocationProof(request);
+            locationProofsContent.put(witnessId, response.getContent());
+            locationProofsSignatures.put(witnessId, response.getSignature());
             System.out.println(String.format("Received Proof from %s...", witnessId));
+        }
+        LocationReport locationReport = new LocationReport(location, locationProofsContent, locationProofsSignatures);
+        locationReports.put(ep, locationReport);
+    }
+
+    private void submitLocationReport(int ep) {
+        LocationReport locationReport = locationReports.get(ep);
+        List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
+
+        for (Integer witnessId : locationReport.getLocationProofsContent().keySet()) {
+            locationProofMessages.add(
+                    LocationServer.LocationMessage.newBuilder()
+                    .setContent(locationReport.getLocationProofsContent().get(witnessId))
+                    .setSignature(locationReport.getLocationProofsSignature().get(witnessId))
+                    .build()
+            );
+        }
+
+        LocationServer.SubmitLocationReportRequest request = LocationServer.SubmitLocationReportRequest.newBuilder()
+                .setLocationProver(
+                        LocationServer.LocationMessage.newBuilder()
+                                .setContent(locationReport.getLocationProver().toJsonString())
+                                .setSignature(locationReport.getLocationProver().toJsonString())
+                                .build())
+                .addAllLocationProofs(locationProofMessages)
+                .build();
+
+        LocationServer.SubmitLocationReportResponse response = locationServerServiceStub.submitLocationReport(request);
+    }
+
+    private void obtainLocationReport(int ep) throws JsonProcessingException {
+        ObjectMapper objectMapper = new ObjectMapper();
+        Location locationRequest = new Location(clientId, ep, 0, 0);
+        Map<Integer, String> locationProofsContent = new HashMap<>();
+        Map<Integer, String> locationProofsSignatures = new HashMap<>();
+
+        LocationServer.ObtainLocationReportRequest request = LocationServer.ObtainLocationReportRequest.newBuilder()
+                .setContent(locationRequest.toJsonString())
+                .setSignature(locationRequest.toJsonString())
+                .build();
+
+        LocationServer.ObtainLocationReportResponse response = locationServerServiceStub.obtainLocationReport(request);
+        Location locationProver = objectMapper.readValue(response.getLocationProver().getContent(), Location.class);
+
+        System.out.println("I am " + locationProver.getUserId() + " and I've been at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+
+        for (LocationServer.LocationMessage locationProof : response.getLocationProofsList()) {
+            LocationProof proof = objectMapper.readValue(locationProof.getContent(), LocationProof.class);
+            locationProofsContent.put(proof.getWitnessId(), locationProof.getContent());
+            locationProofsSignatures.put(proof.getWitnessId(), locationProof.getSignature());
+            System.out.println("Witness" + proof.getWitnessId() + " witnessed User" + proof.getUserId() + " at " + proof.getEp() + " " + proof.getLatitude() +  ", " + proof.getLongitude());
         }
     }
 
@@ -111,6 +172,20 @@ public class Client {
         if (args[0].equals(LOCATION_PROOF_REQUEST)) {
             int ep = Integer.parseInt(args[1]);
             requestLocationProof(ep);
+        }
+
+        else if (args[0].equals(SUBMIT_LOCATION_REPORT)) {
+            int ep = Integer.parseInt(args[1]);
+            submitLocationReport(ep);
+        }
+
+        else if (args[0].equals(OBTAIN_LOCATION_REPORT)) {
+            int ep = Integer.parseInt(args[1]);
+            try {
+                obtainLocationReport(ep);
+            } catch (JsonProcessingException ex) {
+                System.err.println("Caught JSON Processing exception");
+            }
         }
 
         else
@@ -160,13 +235,13 @@ public class Client {
 
         Location myLocation = getMyLocation(epoch);
 
-        return systemInfo.getGrid().stream().filter(location ->
-                location.getEp() == epoch &&
+        return systemInfo.getGrid().stream()
+                .filter(location -> location.getEp() == epoch &&
                         location.getUserId() == userId &&
                         location.getLatitude() == latitude &&
                         location.getLongitude() == longitude &&
                         witness == clientId)
-                .collect(Collectors.toList()).size() == 1 &&
+                .count() == 1 &&
                 isNearby(latitude, longitude, myLocation.getLatitude(), myLocation.getLongitude());
     }
 }

@@ -1,22 +1,11 @@
 package pt.tecnico.hdlt.T25.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.grpc.BindableService;
-import io.grpc.ServerBuilder;
-import pt.tecnico.hdlt.T25.Message;
-import pt.tecnico.hdlt.T25.MessageServiceGrpc;
 
-import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
 import pt.tecnico.hdlt.T25.client.Domain.Client;
 import pt.tecnico.hdlt.T25.client.Domain.SystemInfo;
-import pt.tecnico.hdlt.T25.client.Sevices.ProximityServiceImpl;
 
 import java.io.File;
-import java.security.interfaces.RSAPrivateKey;
-import java.security.interfaces.RSAPublicKey;
-
-import static pt.tecnico.hdlt.T25.crypto.Crypto.*;
 
 public class ClientApp {
 

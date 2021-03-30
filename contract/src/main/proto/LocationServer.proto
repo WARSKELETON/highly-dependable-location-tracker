@@ -1,0 +1,35 @@
+//
+// Protocol buffers definition for Client-Server Communication
+//
+syntax = "proto3";
+package pt.tecnico.hdlt.T25;
+
+message SubmitLocationReportRequest {
+  LocationMessage locationProver = 1;
+  repeated LocationMessage locationProofs = 2;
+}
+
+message SubmitLocationReportResponse {
+  string content = 1;
+  string signature = 2;
+}
+
+message ObtainLocationReportRequest {
+  string content = 1;
+  string signature = 2;
+}
+
+message ObtainLocationReportResponse {
+  LocationMessage locationProver = 1;
+  repeated LocationMessage locationProofs = 2;
+}
+
+message LocationMessage {
+  string content = 1;
+  string signature = 2;
+}
+
+service LocationServerService {
+  rpc submitLocationReport(SubmitLocationReportRequest) returns (SubmitLocationReportResponse);
+  rpc obtainLocationReport(ObtainLocationReportRequest) returns (ObtainLocationReportResponse);
+}
