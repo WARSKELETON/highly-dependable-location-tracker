@@ -98,7 +98,7 @@ public class Client {
         for (int witnessId : nearbyUsers) {
             System.out.println(String.format("Sending Location Proof Request to %s...", witnessId));
 
-            LocationProof locationProof = new LocationProof(location.getUserId(), location.getEp(), location.getLatitude(), location.getLongitude(), witnessId);
+            LocationProof locationProof = new LocationProof(location.getUserId(), location.getEp(), location.getLatitude(), location.getLongitude(), witnessId, 0, 0);
             Proximity.LocationProofRequest request = Proximity.LocationProofRequest.newBuilder()
                     .setContent(locationProof.toJsonString())
                     .setSignature(locationProof.toJsonString())
@@ -243,5 +243,22 @@ public class Client {
                         witness == clientId)
                 .count() == 1 &&
                 isNearby(latitude, longitude, myLocation.getLatitude(), myLocation.getLongitude());
+    }
+
+    public Proximity.LocationProofResponse requestLocationProof(Proximity.LocationProofRequest request) throws JsonProcessingException {
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        LocationProof locationProofRequest = objectMapper.readValue(request.getContent(), LocationProof.class);
+
+        Location myLocation = getMyLocation(locationProofRequest.getEp());
+
+        locationProofRequest.setWitnessLatitude(myLocation.getLatitude());
+        locationProofRequest.setWitnessLongitude(myLocation.getLongitude());
+
+        return Proximity.LocationProofResponse
+                .newBuilder()
+                .setContent(locationProofRequest.toJsonString())
+                .setSignature(locationProofRequest.toJsonString())
+                .build();
     }
 }

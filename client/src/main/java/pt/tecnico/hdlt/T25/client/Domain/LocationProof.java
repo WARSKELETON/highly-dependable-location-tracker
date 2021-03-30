@@ -6,13 +6,17 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 public class LocationProof extends Location {
 
     private int witnessId;
+    private int witnessLatitude;
+    private int witnessLongitude;
 
     public LocationProof() {
     }
 
-    LocationProof(int userId, int ep, int latitude, int longitude, int witnessId) {
+    LocationProof(int userId, int ep, int latitude, int longitude, int witnessId, int witnessLatitude, int witnessLongitude) {
         super(userId, ep, latitude, longitude);
         this.witnessId = witnessId;
+        this.witnessLatitude = witnessLatitude;
+        this.witnessLongitude = witnessLongitude;
     }
 
     public int getWitnessId() {
@@ -21,6 +25,22 @@ public class LocationProof extends Location {
 
     public void setWitnessId(int witnessId) {
         this.witnessId = witnessId;
+    }
+
+    public int getWitnessLatitude() {
+        return witnessLatitude;
+    }
+
+    public void setWitnessLatitude(int witnessLatitude) {
+        this.witnessLatitude = witnessLatitude;
+    }
+
+    public int getWitnessLongitude() {
+        return witnessLongitude;
+    }
+
+    public void setWitnessLongitude(int witnessLongitude) {
+        this.witnessLongitude = witnessLongitude;
     }
 
     @Override

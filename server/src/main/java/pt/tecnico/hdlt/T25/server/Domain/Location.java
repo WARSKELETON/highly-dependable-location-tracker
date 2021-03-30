@@ -1,5 +1,6 @@
 package pt.tecnico.hdlt.T25.server.Domain;
 
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
