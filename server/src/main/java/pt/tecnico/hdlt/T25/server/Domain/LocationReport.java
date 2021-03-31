@@ -7,14 +7,16 @@ import java.util.Map;
 
 public class LocationReport {
     private Location locationProver;
+    private String locationProverSignature;
     private Map<Integer, String> locationProofsContent;
     private Map<Integer, String> locationProofsSignature;
 
     public LocationReport() {
     }
 
-    public LocationReport(Location locationProver, Map<Integer, String> locationProofsContent, Map<Integer, String> locationProofsSignature) {
+    public LocationReport(Location locationProver, String locationProverSignature, Map<Integer, String> locationProofsContent, Map<Integer, String> locationProofsSignature) {
         this.locationProver = locationProver;
+        this.locationProverSignature = locationProverSignature;
         this.locationProofsContent = locationProofsContent;
         this.locationProofsSignature = locationProofsSignature;
     }
@@ -25,6 +27,14 @@ public class LocationReport {
 
     public void setLocationProver(Location locationProver) {
         this.locationProver = locationProver;
+    }
+
+    public String getLocationProverSignature() {
+        return locationProverSignature;
+    }
+
+    public void setLocationProverSignature(String locationProverSignature) {
+        this.locationProverSignature = locationProverSignature;
     }
 
     public Map<Integer, String> getLocationProofsContent() {

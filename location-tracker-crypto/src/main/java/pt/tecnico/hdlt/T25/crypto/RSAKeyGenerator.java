@@ -12,10 +12,10 @@ public class RSAKeyGenerator {
 
     public static void main(String[] args) throws Exception {
 
-        for (int i = 0; i < 75; i++) {
+        /*for (int i = 0; i < 75; i++) {
             write("client" + i + "-priv.key", "client" + i + "-pub.key");
-        }
-        write("server-priv.key", "server-pub.key");
+        }*/
+        write("ha-priv.key", "ha-pub.key");
 
         System.out.println("Done.");
     }

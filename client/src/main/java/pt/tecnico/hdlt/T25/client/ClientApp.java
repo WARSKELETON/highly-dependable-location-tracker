@@ -3,6 +3,7 @@ package pt.tecnico.hdlt.T25.client;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import pt.tecnico.hdlt.T25.client.Domain.Client;
+import pt.tecnico.hdlt.T25.client.Domain.HAClient;
 import pt.tecnico.hdlt.T25.client.Domain.SystemInfo;
 
 import java.io.File;
@@ -10,10 +11,6 @@ import java.io.File;
 public class ClientApp {
 
 	public static void main(String[] args) throws Exception {
-
-	    String clientPrivKeyFileName = "client-priv.key";
-	    String serverPubKeyFileName = "keys/server-pub.key";
-
         System.out.println(ClientApp.class.getSimpleName());
 
 		System.out.printf("Received %d arguments%n", args.length);
@@ -34,30 +31,10 @@ public class ClientApp {
 		ObjectMapper objectMapper = new ObjectMapper();
 		SystemInfo systemInfo = objectMapper.readValue(new File("resources/grid.json"), SystemInfo.class);
 
-		Client client = new Client(serverHost, serverPort, clientId, systemInfo);
-
-		/*
-		RSAPublicKey serverPubKey = getPub(serverPubKeyFileName);
-		RSAPrivateKey clientPrivKey = getPriv(clientPrivKeyFileName);
-		String content = encryptAES("friend");
-		Message.MessageRequest request = Message.MessageRequest.newBuilder()
-				.setContent(content)
-				.setSignature(sign(content, clientPrivKey))
-				.build();
-
-		Message.MessageResponse response = stub.greeting(request);
-		String responseContent = response.getContent();
-		String responseSignature = response.getSignature();
-		try {
-			if (verify(responseContent, responseSignature, serverPubKey)) {
-				System.out.println("Signature verified! Received message -> " + decryptAES(responseContent));
-			}
-		} catch (Exception ignored) {
+		if (clientId == -1) {
+			new HAClient(serverHost, serverPort, clientId, systemInfo);
+		} else {
+			new Client(serverHost, serverPort, clientId, systemInfo);
 		}
-
-		// A Channel should be shutdown before stopping the process.
-		channel.shutdownNow();
-		 */
 	}
-
 }

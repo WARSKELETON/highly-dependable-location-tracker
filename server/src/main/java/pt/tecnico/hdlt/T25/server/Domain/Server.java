@@ -6,7 +6,6 @@ import io.grpc.BindableService;
 import io.grpc.ServerBuilder;
 import org.javatuples.Pair;
 import pt.tecnico.hdlt.T25.LocationServer;
-import pt.tecnico.hdlt.T25.Proximity;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 import pt.tecnico.hdlt.T25.server.Services.LocationServerServiceImpl;
 
@@ -58,6 +57,7 @@ public class Server {
             String fileName = "client" + i + "-pub.key";
             this.clientPublicKeys.put(i, Crypto.getPub(fileName));
         }
+        this.clientPublicKeys.put(-1, Crypto.getPub("ha-pub.key"));
     }
 
     public boolean verifyLocationReport(LocationServer.SubmitLocationReportRequest report) throws JsonProcessingException {
@@ -98,7 +98,7 @@ public class Server {
 
         // TODO How many should be correct??
         if (report.getLocationProofsList().size() / 2 < numberLegitProofs) {
-            LocationReport locationReport = new LocationReport(locationProver, locationProofsContent, locationProofsSignatures);
+            LocationReport locationReport = new LocationReport(locationProver, report.getLocationProver().getSignature(), locationProofsContent, locationProofsSignatures);
             locationReports.put(new Pair<>(locationProver.getUserId(), locationProver.getEp()), locationReport);
             return true;
         }
@@ -120,37 +120,75 @@ public class Server {
     public LocationServer.ObtainLocationReportResponse obtainLocationReport(LocationServer.ObtainLocationReportRequest report) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         String requestContent = Crypto.decryptRSA(report.getContent(), this.privateKey);
-        Location locationRequest = objectMapper.readValue(requestContent, Location.class);
+        LocationReportRequest locationRequest = objectMapper.readValue(requestContent, LocationReportRequest.class);
 
-        if (!Crypto.verify(requestContent, report.getSignature(), this.getUserPublicKey(locationRequest.getUserId()))) {
+        if (!Crypto.verify(requestContent, report.getSignature(), this.getUserPublicKey(locationRequest.getSourceClientId()))) {
             System.out.println("Some user tried to illegitimately request " + locationRequest.getUserId() + " location at epoch " + locationRequest.getEp());
-            LocationServer.ObtainLocationReportResponse.newBuilder().build();
+            return LocationServer.ObtainLocationReportResponse.newBuilder().build();
         }
 
         LocationReport locationReport = locationReports.get(new Pair<>(locationRequest.getUserId(), locationRequest.getEp()));
-        List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
+        if (locationReport == null) {
+            return LocationServer.ObtainLocationReportResponse.newBuilder().build();
+        }
+
         System.out.println("Obtaining location for " + locationRequest.getUserId() + " at epoch " + locationRequest.getEp());
 
-        for (Integer witnessId : locationReport.getLocationProofsContent().keySet()) {
-            String locationProofContent = locationReport.getLocationProofsContent().get(witnessId);
+        return this.getLocationReportResponse(locationReport, locationRequest.getSourceClientId());
+    }
+
+    private LocationServer.ObtainLocationReportResponse getLocationReportResponse(LocationReport report, int userId) {
+        List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
+
+        for (Integer witnessId : report.getLocationProofsContent().keySet()) {
+            String locationProofContent = report.getLocationProofsContent().get(witnessId);
 
             locationProofMessages.add(
                     LocationServer.LocationMessage.newBuilder()
-                            .setContent(Crypto.encryptRSA(locationProofContent, this.getUserPublicKey(locationRequest.getUserId())))
-                            .setSignature(locationReport.getLocationProofsSignature().get(witnessId))
+                            .setContent(Crypto.encryptRSA(locationProofContent, this.getUserPublicKey(userId)))
+                            .setSignature(report.getLocationProofsSignature().get(witnessId))
                             .build()
             );
         }
 
-        String locationProverContent = locationReport.getLocationProver().toJsonString();
+        String locationProverContent = report.getLocationProver().toJsonString();
 
         return LocationServer.ObtainLocationReportResponse.newBuilder()
                 .setLocationProver(
                         LocationServer.LocationMessage.newBuilder()
-                                .setContent(Crypto.encryptRSA(locationProverContent, this.getUserPublicKey(locationRequest.getUserId())))
-                                .setSignature(Crypto.sign(locationProverContent, this.privateKey))
+                                .setContent(Crypto.encryptRSA(locationProverContent, this.getUserPublicKey(userId)))
+                                .setSignature(report.getLocationProverSignature())
                                 .build())
                 .addAllLocationProofs(locationProofMessages)
+                .build();
+    }
+
+    public LocationServer.ObtainUsersAtLocationResponse obtainUsersAtLocation(LocationServer.ObtainUsersAtLocationRequest request) throws JsonProcessingException {
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        String requestContent = Crypto.decryptRSA(request.getContent(), this.privateKey);
+        Location locationRequest = objectMapper.readValue(requestContent, Location.class);
+
+        if (locationRequest == null) {
+            return LocationServer.ObtainUsersAtLocationResponse.newBuilder().build();
+        }
+
+        if (!Crypto.verify(requestContent, request.getSignature(), this.getUserPublicKey(-1))) {
+            System.out.println("Some user tried to illegitimately request " + locationRequest.getUserId() + " location at epoch " + locationRequest.getEp());
+            return LocationServer.ObtainUsersAtLocationResponse.newBuilder().build();
+        }
+
+        List<LocationServer.ObtainLocationReportResponse> locationReportResponses = new ArrayList<>();
+        for (int i = 0; i < this.numberOfUsers; i++) {
+            LocationReport report = locationReports.get(new Pair<>(i, locationRequest.getEp()));
+            if (report != null && report.getLocationProver().getLongitude() == locationRequest.getLongitude() && report.getLocationProver().getLatitude() == locationRequest.getLatitude()) {
+                locationReportResponses.add(this.getLocationReportResponse(report, -1));
+            }
+        }
+        System.out.println("Obtaining location for " + locationRequest.getUserId() + " at epoch " + locationRequest.getEp());
+
+        return LocationServer.ObtainUsersAtLocationResponse.newBuilder()
+                .addAllLocationReports(locationReportResponses)
                 .build();
     }
 }

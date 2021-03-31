@@ -7,64 +7,46 @@ import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.ServerBuilder;
 import pt.tecnico.hdlt.T25.LocationServer;
-import pt.tecnico.hdlt.T25.LocationServerServiceGrpc;
 import pt.tecnico.hdlt.T25.Proximity;
 import pt.tecnico.hdlt.T25.ProximityServiceGrpc;
 import pt.tecnico.hdlt.T25.client.Sevices.ProximityServiceImpl;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
 import java.io.IOException;
-import java.security.PrivateKey;
-import java.security.PublicKey;
 import java.util.*;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-public class Client {
+import static pt.tecnico.hdlt.T25.crypto.Crypto.getPriv;
+
+public class Client extends AbstractClient {
     private static final String LOCATION_PROOF_REQUEST = "proof";
     private static final String SUBMIT_LOCATION_REPORT = "submit";
     private static final String OBTAIN_LOCATION_REPORT = "obtain";
     private static final int CLIENT_ORIGINAL_PORT = 8000;
 
-    private String serverHost;
-    private int serverPort;
-    private int clientId;
-    private final PrivateKey privateKey;
-    private final PublicKey serverPublicKey;
-    private Map<Integer, PublicKey> publicKeys;
-    private final SystemInfo systemInfo;
-    private LocationServerServiceGrpc.LocationServerServiceBlockingStub locationServerServiceStub;
     private Map<Integer, ProximityServiceGrpc.ProximityServiceBlockingStub> proximityServiceStubs;
     private Map<Integer, LocationReport> locationReports;
 
     public Client(String serverHost, int serverPort, int clientId, SystemInfo systemInfo) throws IOException {
-        this.clientId = clientId;
-        this.serverHost = serverHost;
-        this.serverPort = serverPort;
-        this.systemInfo = systemInfo;
+        super(serverHost, serverPort, clientId, systemInfo);
         this.locationReports = new HashMap<>();
         this.proximityServiceStubs = new HashMap<>();
         this.connectToClients();
-        this.connectToServer();
-        this.publicKeys = new HashMap<>();
-        this.privateKey = Crypto.getPriv("client" + clientId + "-priv.key");
-        this.serverPublicKey = Crypto.getPub("server-pub.key");
-        this.loadPublicKeys();
+        this.setPrivateKey(getPriv("client" + clientId + "-priv.key"));
         this.eventLoop();
     }
 
     private void connectToClients() throws IOException {
-        int numberOfUsers = systemInfo.getNumberOfUsers();
+        int numberOfUsers = this.getSystemInfo().getNumberOfUsers();
 
         // Open "Server" for other Clients
         final BindableService proximityService = new ProximityServiceImpl(this);
-        io.grpc.Server proximityServer = ServerBuilder.forPort(CLIENT_ORIGINAL_PORT + clientId).addService(proximityService).build();
+        io.grpc.Server proximityServer = ServerBuilder.forPort(CLIENT_ORIGINAL_PORT + this.getClientId()).addService(proximityService).build();
         proximityServer.start();
 
         // Connect to all other Clients
         for (int i = 0; i < numberOfUsers; i++) {
-            if (i == clientId) continue;
+            if (i == this.getClientId()) continue;
 
             int port = CLIENT_ORIGINAL_PORT + i;
             String target = "localhost:" + port;
@@ -74,23 +56,13 @@ public class Client {
         }
     }
 
-    private void connectToServer() {
-        String target = serverHost + ":" + serverPort;
-        final ManagedChannel channel = ManagedChannelBuilder.forTarget(target).usePlaintext().build();
-        locationServerServiceStub = LocationServerServiceGrpc.newBlockingStub(channel);
-    }
-
-    private boolean isNearby(double latitude1, double longitude1, double latitude2, double longitude2) {
-        return Math.sqrt(Math.pow(latitude1 - latitude2, 2) + Math.pow(longitude1 - longitude2, 2)) <= systemInfo.getStep() + Math.round(systemInfo.getStep() / 2.0);
-    }
-
     private List<Integer> getNearbyUsers(Location location) {
         int ep = location.getEp();
         double latitude = location.getLatitude();
         double longitude = location.getLongitude();
 
-        return systemInfo.getGrid().stream()
-                .filter(location1 -> location1.getEp() == ep && location1.getUserId() != clientId && isNearby(latitude, longitude, location1.getLatitude(), location1.getLongitude()))
+        return this.getSystemInfo().getGrid().stream()
+                .filter(location1 -> location1.getEp() == ep && location1.getUserId() != this.getClientId()&& isNearby(latitude, longitude, location1.getLatitude(), location1.getLongitude()))
                 .map(Location::getUserId)
                 .collect(Collectors.toList());
     }
@@ -98,8 +70,8 @@ public class Client {
     private void requestLocationProof(int ep) throws JsonProcessingException {
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
-        Location location = systemInfo.getGrid().stream()
-                .filter(location1 -> location1.getEp() == ep && location1.getUserId() == clientId)
+        Location location = this.getSystemInfo().getGrid().stream()
+                .filter(location1 -> location1.getEp() == ep && location1.getUserId() == this.getClientId())
                 .collect(Collectors.toList())
                 .get(0);
 
@@ -114,7 +86,7 @@ public class Client {
 
             Proximity.LocationProofRequest request = Proximity.LocationProofRequest.newBuilder()
                     .setContent(content)
-                    .setSignature(Crypto.sign(content, this.privateKey))
+                    .setSignature(Crypto.sign(content, this.getPrivateKey()))
                     .build();
 
             Proximity.LocationProofResponse response = proximityServiceStubs.get(witnessId).requestLocationProof(request);
@@ -149,7 +121,7 @@ public class Client {
         for (Integer witnessId : locationReport.getLocationProofsContent().keySet()) {
             locationProofMessages.add(
                     LocationServer.LocationMessage.newBuilder()
-                    .setContent(Crypto.encryptRSA(locationReport.getLocationProofsContent().get(witnessId), this.serverPublicKey))
+                    .setContent(Crypto.encryptRSA(locationReport.getLocationProofsContent().get(witnessId), this.getServerPublicKey()))
                     .setSignature(locationReport.getLocationProofsSignature().get(witnessId))
                     .build()
             );
@@ -160,62 +132,17 @@ public class Client {
         LocationServer.SubmitLocationReportRequest request = LocationServer.SubmitLocationReportRequest.newBuilder()
                 .setLocationProver(
                         LocationServer.LocationMessage.newBuilder()
-                                .setContent(Crypto.encryptRSA(content, this.serverPublicKey))
-                                .setSignature(Crypto.sign(content, this.privateKey))
+                                .setContent(Crypto.encryptRSA(content, this.getServerPublicKey()))
+                                .setSignature(Crypto.sign(content, this.getPrivateKey()))
                                 .build())
                 .addAllLocationProofs(locationProofMessages)
                 .build();
 
-        LocationServer.SubmitLocationReportResponse response = locationServerServiceStub.submitLocationReport(request);
+        LocationServer.SubmitLocationReportResponse response = getLocationServerServiceStub().submitLocationReport(request);
     }
 
-    private boolean verifyLocationProof(LocationProof proof, Location locationProver) {
-        return proof.getEp() == locationProver.getEp() &&
-                proof.getUserId() == locationProver.getUserId() &&
-                proof.getLatitude() == locationProver.getLatitude() &&
-                proof.getLongitude() == locationProver.getLongitude() &&
-                isNearby(proof.getWitnessLatitude(), proof.getWitnessLongitude(), locationProver.getLatitude(), locationProver.getLongitude());
-    }
-
-    private boolean verifyLocationReport(LocationServer.ObtainLocationReportResponse response) throws JsonProcessingException {
-        ObjectMapper objectMapper = new ObjectMapper();
-        String locationProverContent = Crypto.decryptRSA(response.getLocationProver().getContent(), this.privateKey);
-        Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
-
-        if (!Crypto.verify(locationProverContent, response.getLocationProver().getSignature(), this.serverPublicKey)) {
-            System.out.println("Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
-            return false;
-        }
-
-        for (LocationServer.LocationMessage locationProof : response.getLocationProofsList()) {
-            String locationProofContent = Crypto.decryptRSA(locationProof.getContent(), this.privateKey);
-            LocationProof proof = objectMapper.readValue(locationProofContent, LocationProof.class);
-
-            // A single illegitimate proof found in the report should invalidate the whole report
-            if (!(this.verifyLocationProof(proof, locationProver) && Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(proof.getWitnessId())))) {
-                System.out.println("Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
-                return false;
-            }
-        }
-
-        System.out.println("Legitimate report! User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
-        return true;
-    }
-
-    private void obtainLocationReport(int ep) throws JsonProcessingException {
-        Location locationRequest = new Location(clientId, ep, 0, 0);
-        String requestContent = locationRequest.toJsonString();
-
-        LocationServer.ObtainLocationReportRequest request = LocationServer.ObtainLocationReportRequest.newBuilder()
-                .setContent(Crypto.encryptRSA(requestContent, this.serverPublicKey))
-                .setSignature(Crypto.sign(requestContent, this.privateKey))
-                .build();
-
-        LocationServer.ObtainLocationReportResponse response = locationServerServiceStub.obtainLocationReport(request);
-        verifyLocationReport(response);
-    }
-
-    private void parseCommand(String cmd) {
+    @Override
+    void parseCommand(String cmd) {
         String[] args = cmd.split(" ");
 
         if (args.length != 2) {
@@ -239,7 +166,7 @@ public class Client {
         else if (args[0].equals(OBTAIN_LOCATION_REPORT)) {
             int ep = Integer.parseInt(args[1]);
             try {
-                obtainLocationReport(ep);
+                obtainLocationReport(this.getClientId(), ep);
             } catch (JsonProcessingException ex) {
                 System.err.println("Caught JSON Processing exception");
             }
@@ -249,45 +176,10 @@ public class Client {
             System.out.println("Type invalid. Possible types are car and person.");
     }
 
-    private void eventLoop() {
-        String line;
-
-        try (Scanner scanner = new Scanner(System.in)) {
-
-            while (true) {
-                line = scanner.nextLine();
-
-                if (line.isEmpty()) {
-                    continue;
-                }
-
-                this.parseCommand(line);
-            }
-        } catch(Exception e2) {
-            Logger.getLogger(Client.class.getName()).log(Level.WARNING, e2.getMessage(), e2);
-            Thread.currentThread().interrupt();
-        } finally {
-            System.out.println("> Closing");
-        }
-    }
-
-    private void loadPublicKeys() {
-        for (int i = 0; i < systemInfo.getNumberOfUsers(); i++) {
-            if (i == clientId) continue;
-
-            String fileName = "client" + i + "-pub.key";
-            this.publicKeys.put(i, Crypto.getPub(fileName));
-        }
-    }
-
-    private PublicKey getUserPublicKey(int userId) {
-        return publicKeys.get(userId);
-    }
-
     private Location getMyLocation(int ep) {
-        return systemInfo.getGrid().stream().filter(location ->
+        return this.getSystemInfo().getGrid().stream().filter(location ->
                 location.getEp() == ep &&
-                        location.getUserId() == clientId).collect(Collectors.toList()).get(0);
+                        location.getUserId() == this.getClientId()).collect(Collectors.toList()).get(0);
     }
 
     public boolean verifyLocationProofRequest(Proximity.LocationProofRequest request) throws IOException {
@@ -305,12 +197,12 @@ public class Client {
 
         Location myLocation = getMyLocation(epoch);
 
-        return systemInfo.getGrid().stream()
+        return this.getSystemInfo().getGrid().stream()
                 .filter(location -> location.getEp() == epoch &&
                         location.getUserId() == userId &&
                         location.getLatitude() == latitude &&
                         location.getLongitude() == longitude &&
-                        witness == clientId)
+                        witness == this.getClientId())
                 .count() == 1 &&
                 isNearby(latitude, longitude, myLocation.getLatitude(), myLocation.getLongitude()) &&
                 Crypto.verify(request.getContent(), request.getSignature(), this.getUserPublicKey(userId));
@@ -331,7 +223,7 @@ public class Client {
         return Proximity.LocationProofResponse
                 .newBuilder()
                 .setContent(content)
-                .setSignature(Crypto.sign(content, this.privateKey))
+                .setSignature(Crypto.sign(content, this.getPrivateKey()))
                 .build();
     }
 }

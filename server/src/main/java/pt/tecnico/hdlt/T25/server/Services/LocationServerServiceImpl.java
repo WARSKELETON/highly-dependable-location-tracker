@@ -49,4 +49,16 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 			System.out.println(ex.getMessage());
 		}
 	}
+
+	@Override
+	public void obtainUsersAtLocation(LocationServer.ObtainUsersAtLocationRequest request, StreamObserver<LocationServer.ObtainUsersAtLocationResponse> responseObserver) {
+		try {
+			LocationServer.ObtainUsersAtLocationResponse response = locationServer.obtainUsersAtLocation(request);
+
+			responseObserver.onNext(response);
+			responseObserver.onCompleted();
+		} catch (Exception ex) {
+			System.out.println(ex.getMessage());
+		}
+	}
 }
