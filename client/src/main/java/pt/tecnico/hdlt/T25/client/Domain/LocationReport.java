@@ -1,6 +1,5 @@
 package pt.tecnico.hdlt.T25.client.Domain;
 
-import java.util.List;
 import java.util.Map;
 
 public class LocationReport {

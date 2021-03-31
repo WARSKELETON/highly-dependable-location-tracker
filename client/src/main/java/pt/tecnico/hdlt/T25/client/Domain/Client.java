@@ -81,7 +81,6 @@ public class Client extends AbstractClient {
             System.out.println(String.format("Sending Location Proof Request to %s...", witnessId));
 
             LocationProof locationProof = new LocationProof(location.getUserId(), location.getEp(), location.getLatitude(), location.getLongitude(), witnessId, 0, 0);
-
             String content = locationProof.toJsonString();
 
             Proximity.LocationProofRequest request = Proximity.LocationProofRequest.newBuilder()
@@ -99,7 +98,9 @@ public class Client extends AbstractClient {
                 System.out.println(String.format("Illegitimate Proof from %s...", witnessId));
             }
         }
-        LocationReport locationReport = new LocationReport(location, locationProofsContent, locationProofsSignatures);
+
+        String signature = location.toJsonString() + locationProofsSignatures.values().stream().reduce("", String::concat);
+        LocationReport locationReport = new LocationReport(location, Crypto.sign(signature, this.getPrivateKey()), locationProofsContent, locationProofsSignatures);
         locationReports.put(ep, locationReport);
     }
 

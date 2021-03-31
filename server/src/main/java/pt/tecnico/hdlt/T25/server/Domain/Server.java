@@ -151,12 +151,10 @@ public class Server {
             );
         }
 
-        String locationProverContent = report.getLocationProver().toJsonString();
-
         return LocationServer.ObtainLocationReportResponse.newBuilder()
                 .setLocationProver(
                         LocationServer.LocationMessage.newBuilder()
-                                .setContent(Crypto.encryptRSA(locationProverContent, this.getUserPublicKey(userId)))
+                                .setContent(report.getLocationProver().toJsonString())
                                 .setSignature(report.getLocationProverSignature())
                                 .build())
                 .addAllLocationProofs(locationProofMessages)

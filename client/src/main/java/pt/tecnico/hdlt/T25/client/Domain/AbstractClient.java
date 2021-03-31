@@ -122,7 +122,7 @@ abstract class AbstractClient {
 
         if (response.getLocationProver() == null) return false;
 
-        String locationProverContent = Crypto.decryptRSA(response.getLocationProver().getContent(), this.privateKey);
+        String locationProverContent = response.getLocationProver().getContent();
         Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
 
         if (!Crypto.verify(locationProverContent, response.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId()))) {
@@ -136,6 +136,7 @@ abstract class AbstractClient {
 
             // A single illegitimate proof found in the report should invalidate the whole report
             if (!(this.verifyLocationProof(proof, locationProver) && Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(proof.getWitnessId())))) {
+                System.out.println("2");
                 System.out.println("Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
                 return false;
             }
@@ -160,8 +161,6 @@ abstract class AbstractClient {
 
     private void loadPublicKeys() {
         for (int i = 0; i < systemInfo.getNumberOfUsers(); i++) {
-            if (i == clientId) continue;
-
             String fileName = "client" + i + "-pub.key";
             this.publicKeys.put(i, Crypto.getPub(fileName));
         }
