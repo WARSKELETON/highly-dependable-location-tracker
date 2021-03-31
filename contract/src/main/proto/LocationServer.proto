@@ -24,6 +24,15 @@ message ObtainLocationReportResponse {
   repeated LocationMessage locationProofs = 2;
 }
 
+message ObtainUsersAtLocationRequest {
+  string content = 1;
+  string signature = 2;
+}
+
+message ObtainUsersAtLocationResponse {
+  repeated ObtainLocationReportResponse locationReports = 1;
+}
+
 message LocationMessage {
   string content = 1;
   string signature = 2;
@@ -32,4 +41,5 @@ message LocationMessage {
 service LocationServerService {
   rpc submitLocationReport(SubmitLocationReportRequest) returns (SubmitLocationReportResponse);
   rpc obtainLocationReport(ObtainLocationReportRequest) returns (ObtainLocationReportResponse);
+  rpc obtainUsersAtLocation(ObtainUsersAtLocationRequest) returns (ObtainUsersAtLocationResponse);
 }

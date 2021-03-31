@@ -169,28 +169,50 @@ public class Client {
         LocationServer.SubmitLocationReportResponse response = locationServerServiceStub.submitLocationReport(request);
     }
 
-    private void obtainLocationReport(int ep) throws JsonProcessingException {
+    private boolean verifyLocationProof(LocationProof proof, Location locationProver) {
+        return proof.getEp() == locationProver.getEp() &&
+                proof.getUserId() == locationProver.getUserId() &&
+                proof.getLatitude() == locationProver.getLatitude() &&
+                proof.getLongitude() == locationProver.getLongitude() &&
+                isNearby(proof.getWitnessLatitude(), proof.getWitnessLongitude(), locationProver.getLatitude(), locationProver.getLongitude());
+    }
+
+    private boolean verifyLocationReport(LocationServer.ObtainLocationReportResponse response) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
+        String locationProverContent = Crypto.decryptRSA(response.getLocationProver().getContent(), this.privateKey);
+        Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
+
+        if (!Crypto.verify(locationProverContent, response.getLocationProver().getSignature(), this.serverPublicKey)) {
+            System.out.println("Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+            return false;
+        }
+
+        for (LocationServer.LocationMessage locationProof : response.getLocationProofsList()) {
+            String locationProofContent = Crypto.decryptRSA(locationProof.getContent(), this.privateKey);
+            LocationProof proof = objectMapper.readValue(locationProofContent, LocationProof.class);
+
+            // A single illegitimate proof found in the report should invalidate the whole report
+            if (!(this.verifyLocationProof(proof, locationProver) && Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(proof.getWitnessId())))) {
+                System.out.println("Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+                return false;
+            }
+        }
+
+        System.out.println("Legitimate report! User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+        return true;
+    }
+
+    private void obtainLocationReport(int ep) throws JsonProcessingException {
         Location locationRequest = new Location(clientId, ep, 0, 0);
-        Map<Integer, String> locationProofsContent = new HashMap<>();
-        Map<Integer, String> locationProofsSignatures = new HashMap<>();
+        String requestContent = locationRequest.toJsonString();
 
         LocationServer.ObtainLocationReportRequest request = LocationServer.ObtainLocationReportRequest.newBuilder()
-                .setContent(locationRequest.toJsonString())
-                .setSignature(locationRequest.toJsonString())
+                .setContent(Crypto.encryptRSA(requestContent, this.serverPublicKey))
+                .setSignature(Crypto.sign(requestContent, this.privateKey))
                 .build();
 
         LocationServer.ObtainLocationReportResponse response = locationServerServiceStub.obtainLocationReport(request);
-        Location locationProver = objectMapper.readValue(response.getLocationProver().getContent(), Location.class);
-
-        System.out.println("I am " + locationProver.getUserId() + " and I've been at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
-
-        for (LocationServer.LocationMessage locationProof : response.getLocationProofsList()) {
-            LocationProof proof = objectMapper.readValue(locationProof.getContent(), LocationProof.class);
-            locationProofsContent.put(proof.getWitnessId(), locationProof.getContent());
-            locationProofsSignatures.put(proof.getWitnessId(), locationProof.getSignature());
-            System.out.println("Witness" + proof.getWitnessId() + " witnessed User" + proof.getUserId() + " at " + proof.getEp() + " " + proof.getLatitude() +  ", " + proof.getLongitude());
-        }
+        verifyLocationReport(response);
     }
 
     private void parseCommand(String cmd) {

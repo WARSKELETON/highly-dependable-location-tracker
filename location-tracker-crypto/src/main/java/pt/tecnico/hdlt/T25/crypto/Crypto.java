@@ -23,7 +23,7 @@ public class Crypto {
     public static RSAPrivateKey getPriv(String filename) {
 
         try {
-            File file = new File("resources/" + filename);
+            File file = new File("resources/keys/" + filename);
             String absolutePath = file.getAbsolutePath();
             byte[] keyBytes = Files.readAllBytes(Paths.get(absolutePath));
 
@@ -40,7 +40,7 @@ public class Crypto {
     public static RSAPublicKey getPub(String filename) {
 
         try {
-            File file = new File("resources/" + filename);
+            File file = new File("resources/keys/" + filename);
             String absolutePath = file.getAbsolutePath();
             byte[] keyBytes = Files.readAllBytes(Paths.get(absolutePath));
 
@@ -131,7 +131,7 @@ public class Crypto {
     }
 
     public static SecretKeySpec getAESKey(String keyPath) throws GeneralSecurityException, IOException {
-        File file = new File("resources/" + keyPath);
+        File file = new File("resources/keys/" + keyPath);
         String absolutePath = file.getAbsolutePath();
         FileInputStream fis = new FileInputStream(absolutePath);
         byte[] encoded = new byte[fis.available()];

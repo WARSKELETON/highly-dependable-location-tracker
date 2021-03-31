@@ -6,11 +6,7 @@ import pt.tecnico.hdlt.T25.LocationServerServiceGrpc;
 import io.grpc.stub.StreamObserver;
 import pt.tecnico.hdlt.T25.server.Domain.Server;
 
-import java.security.interfaces.RSAPrivateKey;
-import java.security.interfaces.RSAPublicKey;
 import java.util.logging.Logger;
-
-import static pt.tecnico.hdlt.T25.crypto.Crypto.*;
 
 public class LocationServerServiceImpl extends LocationServerServiceGrpc.LocationServerServiceImplBase {
 	private static final Logger LOGGER = Logger.getLogger(LocationServerServiceImpl.class.getName());
@@ -25,14 +21,18 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 		try {
 			if (locationServer.verifyLocationReport(request)) {
 				System.out.println("Location report submitted with success.");
-				LocationServer.SubmitLocationReportResponse response = LocationServer.SubmitLocationReportResponse.newBuilder()
-						.setContent("content")
-						.setSignature("signature")
-						.build();
-
-				responseObserver.onNext(response);
-				responseObserver.onCompleted();
+			} else {
+				System.out.println("Location report illegitimate or already in the system.");
 			}
+
+			// TODO Change response
+			LocationServer.SubmitLocationReportResponse response = LocationServer.SubmitLocationReportResponse.newBuilder()
+					.setContent("content")
+					.setSignature("signature")
+					.build();
+
+			responseObserver.onNext(response);
+			responseObserver.onCompleted();
 		} catch (Exception ex) {
 			System.out.println(ex.getMessage());
 		}
@@ -45,8 +45,8 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 
 			responseObserver.onNext(response);
 			responseObserver.onCompleted();
-		} catch (Exception ignored) {
-			System.out.println("morri");
+		} catch (Exception ex) {
+			System.out.println(ex.getMessage());
 		}
 	}
 }
