@@ -58,6 +58,7 @@ public class LocationProof extends Location {
 
         return node;
     }
+
     @Override
     public String toJsonString() {
         return toJson().toString();

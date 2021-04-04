@@ -48,7 +48,7 @@ public class TimelineGenerator {
         ArrayList<Integer> positions = new ArrayList<>();
         Map<ObjectNode, Integer> positionsToUserId = new HashMap<>();
 
-        for (int i = 0; i <= gridSize; i += step) {
+        for (int i = 0; i < gridSize; i += step) {
             positions.add(i);
         }
 

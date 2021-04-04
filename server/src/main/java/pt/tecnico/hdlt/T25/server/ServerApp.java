@@ -4,6 +4,8 @@ import pt.tecnico.hdlt.T25.server.Domain.Server;
 
 public class ServerApp {
 
+	public static String SERVER_RECOVERY_FILE_PATH = "resources/server_state.json";
+
 	public static void main(String[] args) throws Exception {
 		System.out.println(ServerApp.class.getSimpleName());
 
@@ -21,7 +23,6 @@ public class ServerApp {
 		final int port = Integer.parseInt(args[0]);
 		final int numberOfUsers = Integer.parseInt(args[1]);
 		final int step = Integer.parseInt(args[2]);
-		Server server = new Server(port, numberOfUsers, step);
+		new Server(port, numberOfUsers, step);
 	}
-
 }

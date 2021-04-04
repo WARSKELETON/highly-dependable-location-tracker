@@ -9,7 +9,7 @@ import io.grpc.ServerBuilder;
 import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.Proximity;
 import pt.tecnico.hdlt.T25.ProximityServiceGrpc;
-import pt.tecnico.hdlt.T25.client.Sevices.ProximityServiceImpl;
+import pt.tecnico.hdlt.T25.client.Services.ProximityServiceImpl;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
 import java.io.IOException;
@@ -36,6 +36,14 @@ public class Client extends AbstractClient {
         this.eventLoop();
     }
 
+    public Map<Integer, ProximityServiceGrpc.ProximityServiceBlockingStub> getProximityServiceStubs() {
+        return proximityServiceStubs;
+    }
+
+    public Map<Integer, LocationReport> getLocationReports() {
+        return locationReports;
+    }
+
     private void connectToClients() throws IOException {
         int numberOfUsers = this.getSystemInfo().getNumberOfUsers();
 
@@ -56,7 +64,7 @@ public class Client extends AbstractClient {
         }
     }
 
-    private List<Integer> getNearbyUsers(Location location) {
+    List<Integer> getNearbyUsers(Location location) {
         int ep = location.getEp();
         double latitude = location.getLatitude();
         double longitude = location.getLongitude();
@@ -67,7 +75,7 @@ public class Client extends AbstractClient {
                 .collect(Collectors.toList());
     }
 
-    private void requestLocationProof(int ep) throws JsonProcessingException {
+    void requestLocationProof(int ep) throws JsonProcessingException {
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
         Location location = this.getSystemInfo().getGrid().stream()
@@ -76,7 +84,7 @@ public class Client extends AbstractClient {
                 .get(0);
 
         List<Integer> nearbyUsers = getNearbyUsers(location);
-        System.out.println(nearbyUsers.size());
+        System.out.println("Nearby users: " + nearbyUsers.size());
         for (int witnessId : nearbyUsers) {
             System.out.println(String.format("Sending Location Proof Request to %s...", witnessId));
 

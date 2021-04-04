@@ -1,5 +1,11 @@
 package pt.tecnico.hdlt.T25.server.Domain;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 import java.util.Map;
 
 public class LocationReport {
@@ -48,5 +54,22 @@ public class LocationReport {
 
     public void setLocationProofsSignature(Map<Integer, String> locationProofsSignature) {
         this.locationProofsSignature = locationProofsSignature;
+    }
+
+    public ObjectNode toJson() throws JsonProcessingException {
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        ObjectNode node = objectMapper.createObjectNode();
+
+        node.set("locationProver", this.locationProver.toJson());
+        node.put("locationProverSignature", this.locationProverSignature);
+        node.set("locationProofsContent", objectMapper.convertValue(locationProofsContent, JsonNode.class));
+        node.set("locationProofsSignature", objectMapper.convertValue(locationProofsSignature, JsonNode.class));
+
+        return node;
+    }
+
+    public String toJsonString() throws JsonProcessingException {
+        return toJson().toString();
     }
 }

@@ -1,21 +1,36 @@
 package pt.tecnico.hdlt.T25.server.Domain;
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.PropertyAccessor;
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.grpc.BindableService;
 import io.grpc.ServerBuilder;
 import org.javatuples.Pair;
 import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
+import pt.tecnico.hdlt.T25.server.ServerApp;
 import pt.tecnico.hdlt.T25.server.Services.LocationServerServiceImpl;
 
+import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import static pt.tecnico.hdlt.T25.server.ServerApp.SERVER_RECOVERY_FILE_PATH;
 
 public class Server {
     private int port;
@@ -34,9 +49,38 @@ public class Server {
         this.clientPublicKeys = new HashMap<>();
         this.privateKey = Crypto.getPriv("server-priv.key");
         this.loadPublicKeys();
+        this.loadPreviousState();
         this.startServer();
     }
 
+    private void loadPreviousState() {
+        try {
+            JsonFactory jsonFactory = new JsonFactory();
+            ObjectMapper objectMapper = new ObjectMapper(jsonFactory);
+
+            JsonNode objectNode = objectMapper.readTree(new File(SERVER_RECOVERY_FILE_PATH));
+            objectMapper.configure(JsonParser.Feature.AUTO_CLOSE_SOURCE, true);
+
+            port = objectNode.get("port").asInt();
+            numberOfUsers = objectNode.get("numberOfUsers").asInt();
+            step = objectNode.get("step").asInt();
+            JsonNode arrayNode = objectNode.get("locationReports");
+
+            for (JsonNode jsonNode : arrayNode) {
+                Integer userId = jsonNode.get("userId").asInt();
+                Integer epoch = jsonNode.get("epoch").asInt();
+                String res = jsonNode.get("content").asText();
+
+                LocationReport locationReport = objectMapper.readValue(res, LocationReport.class);
+
+                locationReports.put(new Pair<>(userId, epoch), locationReport);
+            }
+        }
+        catch (IOException e) {
+            System.out.println("Failed to parse previous state.");
+            System.out.println(e.getMessage());
+        }
+    }
     private void startServer() throws IOException, InterruptedException {
         final BindableService impl = new LocationServerServiceImpl(this);
 
@@ -100,6 +144,7 @@ public class Server {
         if (report.getLocationProofsList().size() / 2 < numberLegitProofs) {
             LocationReport locationReport = new LocationReport(locationProver, report.getLocationProver().getSignature(), locationProofsContent, locationProofsSignatures);
             locationReports.put(new Pair<>(locationProver.getUserId(), locationProver.getEp()), locationReport);
+            this.saveCurrentServerState();
             return true;
         }
         return false;
@@ -188,5 +233,31 @@ public class Server {
         return LocationServer.ObtainUsersAtLocationResponse.newBuilder()
                 .addAllLocationReports(locationReportResponses)
                 .build();
+    }
+
+    private void saveCurrentServerState() {
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            ArrayNode arrayNode = objectMapper.createArrayNode();
+
+            for (Pair<Integer, Integer> key: locationReports.keySet()) {
+                ObjectNode node = objectMapper.createObjectNode();
+                node.put("userId", key.getValue0());
+                node.put("epoch", key.getValue1());
+                node.put("content", locationReports.get(key).toJsonString());
+
+                arrayNode.add(node);
+            }
+
+            ObjectNode node = objectMapper.createObjectNode();
+            node.put("port", port);
+            node.put("numberOfUsers", numberOfUsers);
+            node.put("step", step);
+            node.set("locationReports", arrayNode);
+
+            objectMapper.writeValue(new File(SERVER_RECOVERY_FILE_PATH), node);
+        } catch (IOException e) {
+            System.out.println("Failed to save current server state.");
+        }
     }
 }
