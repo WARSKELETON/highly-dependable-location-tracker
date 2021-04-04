@@ -1,4 +1,4 @@
-package pt.tecnico.hdlt.T25.client.Sevices;
+package pt.tecnico.hdlt.T25.client.Services;
 
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;

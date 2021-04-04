@@ -9,7 +9,7 @@ import io.grpc.ServerBuilder;
 import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.Proximity;
 import pt.tecnico.hdlt.T25.ProximityServiceGrpc;
-import pt.tecnico.hdlt.T25.client.Sevices.ProximityServiceImpl;
+import pt.tecnico.hdlt.T25.client.Services.ProximityServiceImpl;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
 import java.io.IOException;
@@ -19,13 +19,13 @@ import java.util.stream.Collectors;
 import static pt.tecnico.hdlt.T25.crypto.Crypto.getPriv;
 
 public class Client extends AbstractClient {
-    private static final String LOCATION_PROOF_REQUEST = "proof";
-    private static final String SUBMIT_LOCATION_REPORT = "submit";
-    private static final String OBTAIN_LOCATION_REPORT = "obtain";
-    private static final int CLIENT_ORIGINAL_PORT = 8000;
+    protected static final String LOCATION_PROOF_REQUEST = "proof";
+    protected static final String SUBMIT_LOCATION_REPORT = "submit";
+    protected static final String OBTAIN_LOCATION_REPORT = "obtain";
+    protected static final int CLIENT_ORIGINAL_PORT = 8000;
 
-    private Map<Integer, ProximityServiceGrpc.ProximityServiceBlockingStub> proximityServiceStubs;
-    private Map<Integer, LocationReport> locationReports;
+    protected Map<Integer, ProximityServiceGrpc.ProximityServiceBlockingStub> proximityServiceStubs;
+    protected Map<Integer, LocationReport> locationReports;
 
     public Client(String serverHost, int serverPort, int clientId, SystemInfo systemInfo) throws IOException {
         super(serverHost, serverPort, clientId, systemInfo);
@@ -36,7 +36,7 @@ public class Client extends AbstractClient {
         this.eventLoop();
     }
 
-    private void connectToClients() throws IOException {
+    protected void connectToClients() throws IOException {
         int numberOfUsers = this.getSystemInfo().getNumberOfUsers();
 
         // Open "Server" for other Clients
@@ -56,7 +56,7 @@ public class Client extends AbstractClient {
         }
     }
 
-    private List<Integer> getNearbyUsers(Location location) {
+    protected List<Integer> getNearbyUsers(Location location) {
         int ep = location.getEp();
         double latitude = location.getLatitude();
         double longitude = location.getLongitude();
@@ -67,7 +67,7 @@ public class Client extends AbstractClient {
                 .collect(Collectors.toList());
     }
 
-    private void requestLocationProof(int ep) throws JsonProcessingException {
+    protected void requestLocationProof(int ep) throws JsonProcessingException {
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
         Location location = this.getSystemInfo().getGrid().stream()
@@ -76,7 +76,7 @@ public class Client extends AbstractClient {
                 .get(0);
 
         List<Integer> nearbyUsers = getNearbyUsers(location);
-        System.out.println(nearbyUsers.size());
+        System.out.println("Nearby users: " + nearbyUsers.size());
         for (int witnessId : nearbyUsers) {
             System.out.println(String.format("Sending Location Proof Request to %s...", witnessId));
 
@@ -104,7 +104,7 @@ public class Client extends AbstractClient {
         locationReports.put(ep, locationReport);
     }
 
-    private boolean verifyLocationProofResponse(LocationProof originalLocationProof, String content) throws JsonProcessingException {
+    protected boolean verifyLocationProofResponse(LocationProof originalLocationProof, String content) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         LocationProof locationProof = objectMapper.readValue(content, LocationProof.class);
 
@@ -115,7 +115,7 @@ public class Client extends AbstractClient {
                 locationProof.getWitnessId() == originalLocationProof.getWitnessId();
     }
 
-    private void submitLocationReport(int ep) {
+    protected void submitLocationReport(int ep) {
         LocationReport locationReport = locationReports.get(ep);
         List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
 
@@ -177,10 +177,10 @@ public class Client extends AbstractClient {
             System.out.println("Type invalid. Possible types are car and person.");
     }
 
-    private Location getMyLocation(int ep) {
+    protected Location getUserLocation(int userId, int ep) {
         return this.getSystemInfo().getGrid().stream().filter(location ->
                 location.getEp() == ep &&
-                        location.getUserId() == this.getClientId()).collect(Collectors.toList()).get(0);
+                        location.getUserId() == userId).collect(Collectors.toList()).get(0);
     }
 
     public boolean verifyLocationProofRequest(Proximity.LocationProofRequest request) throws IOException {
@@ -196,7 +196,7 @@ public class Client extends AbstractClient {
 
         System.out.println(String.format("Verifying request from %d...", userId));
 
-        Location myLocation = getMyLocation(epoch);
+        Location myLocation = getUserLocation(this.getClientId(), epoch);
 
         return this.getSystemInfo().getGrid().stream()
                 .filter(location -> location.getEp() == epoch &&
@@ -214,7 +214,7 @@ public class Client extends AbstractClient {
         ObjectMapper objectMapper = new ObjectMapper();
         LocationProof locationProof = objectMapper.readValue(request.getContent(), LocationProof.class);
 
-        Location myLocation = getMyLocation(locationProof.getEp());
+        Location myLocation = getUserLocation(this.getClientId(), locationProof.getEp());
 
         locationProof.setWitnessLatitude(myLocation.getLatitude());
         locationProof.setWitnessLongitude(myLocation.getLongitude());

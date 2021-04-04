@@ -2,6 +2,7 @@ package pt.tecnico.hdlt.T25.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import pt.tecnico.hdlt.T25.client.Domain.ByzantineClient;
 import pt.tecnico.hdlt.T25.client.Domain.Client;
 import pt.tecnico.hdlt.T25.client.Domain.HAClient;
 import pt.tecnico.hdlt.T25.client.Domain.SystemInfo;
@@ -33,8 +34,10 @@ public class ClientApp {
 
 		if (clientId == -1) {
 			new HAClient(serverHost, serverPort, clientId, systemInfo);
-		} else {
+		} else if (clientId != 10) {
 			new Client(serverHost, serverPort, clientId, systemInfo);
+		} else {
+			new ByzantineClient(serverHost, serverPort, clientId, systemInfo);
 		}
 	}
 }
