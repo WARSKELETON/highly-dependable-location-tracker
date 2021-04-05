@@ -22,6 +22,7 @@ message ObtainLocationReportRequest {
 message ObtainLocationReportResponse {
   LocationMessage locationProver = 1;
   repeated LocationMessage locationProofs = 2;
+  string serverSignature = 3;
 }
 
 message ObtainUsersAtLocationRequest {

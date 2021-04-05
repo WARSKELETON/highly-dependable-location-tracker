@@ -106,42 +106,48 @@ public class Server {
 
     public boolean verifyLocationReport(LocationServer.SubmitLocationReportRequest report) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
-        String locationProofContent;
-        int numberLegitProofs = 0;
+        List<Integer> witnessIds = new ArrayList<>();
 
         String locationProverContent = Crypto.decryptRSA(report.getLocationProver().getContent(), this.privateKey);
         if (locationProverContent == null) return false;
 
         Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
+        // Duplicate location reports are deemed illegitimate
         boolean locationReportExists = locationReports.get(new Pair<>(locationProver.getUserId(), locationProver.getEp())) != null;
-        if (!Crypto.verify(locationProverContent, report.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId())) || locationReportExists) {
-            return false;
-        }
+        if (locationReportExists) return false;
 
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
 
         System.out.println("User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
 
+        // Check each location proof in the report
         for (LocationServer.LocationMessage locationProof : report.getLocationProofsList()) {
-            locationProofContent = Crypto.decryptRSA(locationProof.getContent(), this.privateKey);
+            String locationProofContent = Crypto.decryptRSA(locationProof.getContent(), this.privateKey);
             if (locationProofContent == null) continue;
 
             LocationProof proof = objectMapper.readValue(locationProofContent, LocationProof.class);
+            int witnessId = proof.getWitnessId();
 
-            if (this.verifyLocationProof(proof, locationProver) && Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(proof.getWitnessId()))) {
-                numberLegitProofs++;
+            locationProofsContent.put(witnessId, locationProofContent);
+            locationProofsSignatures.put(witnessId, locationProof.getSignature());
 
-                locationProofsContent.put(proof.getWitnessId(), locationProofContent);
-                locationProofsSignatures.put(proof.getWitnessId(), locationProof.getSignature());
-                System.out.println("Witness" + proof.getWitnessId() + " witnessed User" + proof.getUserId() + " at " + proof.getEp() + " " + proof.getLatitude() +  ", " + proof.getLongitude());
+            if (!witnessIds.contains(witnessId) && this.verifyLocationProof(proof, locationProver) && Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(witnessId))) {
+                witnessIds.add(witnessId);
+                System.out.println("Witness" + witnessId + " witnessed User" + proof.getUserId() + " at " + proof.getEp() + " " + proof.getLatitude() +  ", " + proof.getLongitude());
             } else {
                 System.out.println("Obtained illegitimate witness proof from Witness" + proof.getWitnessId() + " where User" + proof.getUserId() + " would be at " + proof.getEp() + " " + proof.getLatitude() +  ", " + proof.getLongitude());
             }
         }
 
+        // Verify the whole report content
+        if (!Crypto.verify(locationProverContent + locationProofsContent.values().stream().reduce("", String::concat), report.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId()))) {
+            System.out.println("Report failed integrity or authentication checks! User" + locationProver.getUserId() + " would be at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+            return false;
+        }
+
         // TODO How many should be correct??
-        if (report.getLocationProofsList().size() / 2 < numberLegitProofs) {
+        if (witnessIds.size() >= report.getLocationProofsList().size() / 2) {
             LocationReport locationReport = new LocationReport(locationProver, report.getLocationProver().getSignature(), locationProofsContent, locationProofsSignatures);
             locationReports.put(new Pair<>(locationProver.getUserId(), locationProver.getEp()), locationReport);
             this.saveCurrentServerState();
@@ -196,13 +202,15 @@ public class Server {
             );
         }
 
+        String serverSignature = report.getLocationProver().toJsonString() + report.getLocationProofsContent().values().stream().reduce("", String::concat);
         return LocationServer.ObtainLocationReportResponse.newBuilder()
                 .setLocationProver(
                         LocationServer.LocationMessage.newBuilder()
-                                .setContent(report.getLocationProver().toJsonString())
+                                .setContent(Crypto.encryptRSA(report.getLocationProver().toJsonString(), this.getUserPublicKey(userId)))
                                 .setSignature(report.getLocationProverSignature())
                                 .build())
                 .addAllLocationProofs(locationProofMessages)
+                .setServerSignature(Crypto.sign(serverSignature, this.privateKey))
                 .build();
     }
 

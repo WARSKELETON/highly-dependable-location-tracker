@@ -107,7 +107,7 @@ public class Client extends AbstractClient {
             }
         }
 
-        String signature = location.toJsonString() + locationProofsSignatures.values().stream().reduce("", String::concat);
+        String signature = location.toJsonString() + locationProofsContent.values().stream().reduce("", String::concat);
         LocationReport locationReport = new LocationReport(location, Crypto.sign(signature, this.getPrivateKey()), locationProofsContent, locationProofsSignatures);
         locationReports.put(ep, locationReport);
     }
@@ -142,7 +142,7 @@ public class Client extends AbstractClient {
                 .setLocationProver(
                         LocationServer.LocationMessage.newBuilder()
                                 .setContent(Crypto.encryptRSA(content, this.getServerPublicKey()))
-                                .setSignature(Crypto.sign(content, this.getPrivateKey()))
+                                .setSignature(locationReport.getLocationProverSignature())
                                 .build())
                 .addAllLocationProofs(locationProofMessages)
                 .build();
@@ -217,7 +217,7 @@ public class Client extends AbstractClient {
                 Crypto.verify(request.getContent(), request.getSignature(), this.getUserPublicKey(userId));
     }
 
-    public Proximity.LocationProofResponse requestLocationProof(Proximity.LocationProofRequest request) throws JsonProcessingException {
+    public Proximity.LocationProofResponse buildLocationProof(Proximity.LocationProofRequest request) throws JsonProcessingException {
 
         ObjectMapper objectMapper = new ObjectMapper();
         LocationProof locationProof = objectMapper.readValue(request.getContent(), LocationProof.class);

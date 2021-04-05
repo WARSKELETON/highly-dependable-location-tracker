@@ -122,17 +122,14 @@ abstract class AbstractClient {
 
         if (response.getLocationProver() == null) return false;
 
-        String locationProverContent = response.getLocationProver().getContent();
+        String locationProverContent = Crypto.decryptRSA(response.getLocationProver().getContent(), this.privateKey);
         Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
-
-        if (!Crypto.verify(locationProverContent, response.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId()))) {
-            System.out.println("Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
-            return false;
-        }
+        List<String> locationProofsContent = new ArrayList<>();
 
         for (LocationServer.LocationMessage locationProof : response.getLocationProofsList()) {
             String locationProofContent = Crypto.decryptRSA(locationProof.getContent(), this.privateKey);
             LocationProof proof = objectMapper.readValue(locationProofContent, LocationProof.class);
+            locationProofsContent.add(locationProofContent);
 
             // A single illegitimate proof found in the report should invalidate the whole report
             if (!(this.verifyLocationProof(proof, locationProver) && Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(proof.getWitnessId())))) {
@@ -140,6 +137,13 @@ abstract class AbstractClient {
                 System.out.println("Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
                 return false;
             }
+        }
+
+        // Verify inner report client signature and outer server signature
+        String reportContentString = locationProverContent + locationProofsContent.stream().reduce("", String::concat);
+        if (!Crypto.verify(reportContentString, response.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId())) || !Crypto.verify(reportContentString, response.getServerSignature(), this.getServerPublicKey())) {
+            System.out.println("Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+            return false;
         }
 
         System.out.println("Legitimate report! User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());

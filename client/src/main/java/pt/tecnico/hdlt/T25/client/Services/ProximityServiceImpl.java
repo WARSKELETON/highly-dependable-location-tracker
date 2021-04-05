@@ -25,7 +25,7 @@ public class ProximityServiceImpl extends ProximityServiceGrpc.ProximityServiceI
             if (client.verifyLocationProofRequest(request)) {
                 System.out.println("Verified.");
 
-                Proximity.LocationProofResponse response = client.requestLocationProof(request);
+                Proximity.LocationProofResponse response = client.buildLocationProof(request);
 
                 responseObserver.onNext(response);
                 responseObserver.onCompleted();
