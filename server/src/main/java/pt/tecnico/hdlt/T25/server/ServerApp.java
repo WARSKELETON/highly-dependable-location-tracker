@@ -14,7 +14,7 @@ public class ServerApp {
 			System.out.printf("arg[%d] = %s%n", i, args[i]);
 		}
 
-		if (args.length < 2) {
+		if (args.length < 4) {
 			System.err.println("Argument(s) missing!");
 			System.err.printf("Usage: java %s port%n", io.grpc.Server.class.getName());
 			return;
@@ -23,6 +23,7 @@ public class ServerApp {
 		final int port = Integer.parseInt(args[0]);
 		final int numberOfUsers = Integer.parseInt(args[1]);
 		final int step = Integer.parseInt(args[2]);
-		new Server(port, numberOfUsers, step);
+		final int maxNearbyByzantineUsers = Integer.parseInt(args[3]);
+		new Server(port, numberOfUsers, step, maxNearbyByzantineUsers);
 	}
 }

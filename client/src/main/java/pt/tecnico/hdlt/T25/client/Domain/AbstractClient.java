@@ -113,8 +113,7 @@ abstract class AbstractClient {
         return proof.getEp() == locationProver.getEp() &&
                 proof.getUserId() == locationProver.getUserId() &&
                 proof.getLatitude() == locationProver.getLatitude() &&
-                proof.getLongitude() == locationProver.getLongitude() &&
-                isNearby(proof.getWitnessLatitude(), proof.getWitnessLongitude(), locationProver.getLatitude(), locationProver.getLongitude());
+                proof.getLongitude() == locationProver.getLongitude();
     }
 
     boolean verifyLocationReport(LocationServer.ObtainLocationReportResponse response) throws JsonProcessingException {

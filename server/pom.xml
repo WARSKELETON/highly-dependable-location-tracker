@@ -29,6 +29,8 @@
 		<server.port>8080</server.port>
 		<numberOfUsers>50</numberOfUsers>
 		<step>50</step>
+		<maxNearbyByzantineUsers>2</maxNearbyByzantineUsers>
+
 	</properties>
 
 	<dependencies>
@@ -88,6 +90,7 @@
 						<argument>${server.port}</argument>
 						<argument>${numberOfUsers}</argument>
 						<argument>${step}</argument>
+						<argument>${maxNearbyByzantineUsers}</argument>
 					</arguments>
 				</configuration>
 			</plugin>

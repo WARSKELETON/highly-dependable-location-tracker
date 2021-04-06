@@ -1,6 +1,5 @@
 package pt.tecnico.hdlt.T25.client.Domain;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import pt.tecnico.hdlt.T25.Proximity;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
@@ -13,11 +12,11 @@ import java.util.stream.Collectors;
 public class ByzantineClient extends Client {
 
     public ByzantineClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo) throws IOException {
-        super(serverHost, serverPort, clientId, systemInfo);
+        super(serverHost, serverPort, clientId, systemInfo, 0);
     }
 
     @Override
-    void requestLocationProof(int ep) {
+    void createLocationReport(int ep) {
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
         Location location = this.getSystemInfo().getGrid().stream()
@@ -30,7 +29,7 @@ public class ByzantineClient extends Client {
         for (int witnessId : nearbyUsers) {
             System.out.println(String.format("Sending Location Proof Request to %s...", witnessId));
 
-            LocationProof locationProof = new LocationProof(location.getUserId(), location.getEp(), location.getLatitude(), location.getLongitude(), witnessId, 0, 0);
+            LocationProof locationProof = new LocationProof(location.getUserId(), location.getEp(), location.getLatitude(), location.getLongitude(), witnessId);
             String content = locationProof.toJsonString();
 
             Proximity.LocationProofRequest request = Proximity.LocationProofRequest.newBuilder()
@@ -38,7 +37,7 @@ public class ByzantineClient extends Client {
                     .setSignature(Crypto.sign(content, this.getPrivateKey()))
                     .build();
 
-            Proximity.LocationProofResponse response = getProximityServiceStubs().get(witnessId).requestLocationProof(request);
+            /*Proximity.LocationProofResponse response = getProximityServiceStubs().get(witnessId).requestLocationProof(request);
 
             // Byzantine user tries to create a false proof of its own location
             if (Crypto.verify(response.getContent(), response.getSignature(), this.getUserPublicKey(witnessId))) {
@@ -47,7 +46,7 @@ public class ByzantineClient extends Client {
                 System.out.println(String.format("Received Proof from %s...", witnessId));
             } else {
                 System.out.println(String.format("Illegitimate Proof from %s...", witnessId));
-            }
+            }*/
         }
 
         String signature = location.toJsonString() + locationProofsSignatures.values().stream().reduce("", String::concat);

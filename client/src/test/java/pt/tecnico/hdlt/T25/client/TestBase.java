@@ -40,8 +40,9 @@ public class TestBase {
             final String serverHost = testProps.getProperty("server.host");
             final String serverPort = testProps.getProperty("server.port");
             final String clientId = testProps.getProperty("client.id");
+            final int maxNearbyByzantineUsers = Integer.parseInt(testProps.getProperty("maxNearbyByzantineUsers"));
 
-            client = new Client(serverHost, Integer.parseInt(serverPort), Integer.parseInt(clientId), systemInfo);
+            client = new Client(serverHost, Integer.parseInt(serverPort), Integer.parseInt(clientId), systemInfo, maxNearbyByzantineUsers);
         }
         catch (IOException e) {
             System.err.println("Failed tests");

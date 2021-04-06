@@ -1,11 +1,8 @@
 package pt.tecnico.hdlt.T25.server.Domain;
 
-import com.fasterxml.jackson.annotation.JsonAutoDetect;
-import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -15,14 +12,10 @@ import io.grpc.ServerBuilder;
 import org.javatuples.Pair;
 import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
-import pt.tecnico.hdlt.T25.server.ServerApp;
 import pt.tecnico.hdlt.T25.server.Services.LocationServerServiceImpl;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.ArrayList;
@@ -36,15 +29,17 @@ public class Server {
     private int port;
     private int numberOfUsers;
     private int step;
+    private int maxNearbyByzantineUsers;
 
     private final PrivateKey privateKey;
     private Map<Integer, PublicKey> clientPublicKeys;
     private Map<Pair<Integer, Integer>, LocationReport> locationReports; // <UserId, Epoch> to Location Report
 
-    public Server(int port, int numberOfUsers, int step) throws IOException, InterruptedException {
+    public Server(int port, int numberOfUsers, int step, int maxNearbyByzantineUsers) throws IOException, InterruptedException {
         this.port = port;
         this.numberOfUsers = numberOfUsers;
         this.step = step;
+        this.maxNearbyByzantineUsers = maxNearbyByzantineUsers;
         this.locationReports = new HashMap<>();
         this.clientPublicKeys = new HashMap<>();
         this.privateKey = Crypto.getPriv("server-priv.key");
@@ -64,6 +59,7 @@ public class Server {
             port = objectNode.get("port").asInt();
             numberOfUsers = objectNode.get("numberOfUsers").asInt();
             step = objectNode.get("step").asInt();
+            maxNearbyByzantineUsers = objectNode.get("maxNearbyByzantineUsers").asInt();
             JsonNode arrayNode = objectNode.get("locationReports");
 
             for (JsonNode jsonNode : arrayNode) {
@@ -132,7 +128,8 @@ public class Server {
             locationProofsContent.put(witnessId, locationProofContent);
             locationProofsSignatures.put(witnessId, locationProof.getSignature());
 
-            if (!witnessIds.contains(witnessId) && this.verifyLocationProof(proof, locationProver) && Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(witnessId))) {
+            // Witness must be distinct, different from Prover, the location proof matches prover's location and the signature is correct & authentic (from the witness)
+            if (!witnessIds.contains(witnessId) && witnessId != locationProver.getUserId() && this.verifyLocationProof(proof, locationProver) && Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(witnessId))) {
                 witnessIds.add(witnessId);
                 System.out.println("Witness" + witnessId + " witnessed User" + proof.getUserId() + " at " + proof.getEp() + " " + proof.getLatitude() +  ", " + proof.getLongitude());
             } else {
@@ -146,8 +143,7 @@ public class Server {
             return false;
         }
 
-        // TODO How many should be correct??
-        if (witnessIds.size() >= report.getLocationProofsList().size() / 2) {
+        if (witnessIds.size() >= maxNearbyByzantineUsers + 1) {
             LocationReport locationReport = new LocationReport(locationProver, report.getLocationProver().getSignature(), locationProofsContent, locationProofsSignatures);
             locationReports.put(new Pair<>(locationProver.getUserId(), locationProver.getEp()), locationReport);
             this.saveCurrentServerState();
@@ -160,12 +156,7 @@ public class Server {
         return proof.getEp() == locationProver.getEp() &&
                 proof.getUserId() == locationProver.getUserId() &&
                 proof.getLatitude() == locationProver.getLatitude() &&
-                proof.getLongitude() == locationProver.getLongitude() &&
-                isNearby(proof.getWitnessLatitude(), proof.getWitnessLongitude(), locationProver.getLatitude(), locationProver.getLongitude());
-    }
-
-    private boolean isNearby(double latitude1, double longitude1, double latitude2, double longitude2) {
-        return Math.sqrt(Math.pow(latitude1 - latitude2, 2) + Math.pow(longitude1 - longitude2, 2)) <= this.step + Math.round(this.step / 2.0);
+                proof.getLongitude() == locationProver.getLongitude();
     }
 
     public LocationServer.ObtainLocationReportResponse obtainLocationReport(LocationServer.ObtainLocationReportRequest report) throws JsonProcessingException {
@@ -261,6 +252,7 @@ public class Server {
             node.put("port", port);
             node.put("numberOfUsers", numberOfUsers);
             node.put("step", step);
+            node.put("maxNearbyByzantineUsers", maxNearbyByzantineUsers);
             node.set("locationReports", arrayNode);
 
             objectMapper.writeValue(new File(SERVER_RECOVERY_FILE_PATH), node);

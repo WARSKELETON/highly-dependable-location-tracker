@@ -30,6 +30,7 @@
 		<server.host>localhost</server.host>
 		<server.port>8080</server.port>
 		<client.id>1</client.id>
+		<maxNearbyByzantineUsers>2</maxNearbyByzantineUsers>
 		<client.isByzantine>false</client.isByzantine>
 	</properties>
 
@@ -115,7 +116,8 @@
 						<argument>${server.host}</argument>
 						<argument>${server.port}</argument>
 						<argument>${client.id}</argument>
-						<argument>${client.isByzantine}</argument>
+                        <argument>${maxNearbyByzantineUsers}</argument>
+                        <argument>${client.isByzantine}</argument>
 					</arguments>
 				</configuration>
 			</plugin>
