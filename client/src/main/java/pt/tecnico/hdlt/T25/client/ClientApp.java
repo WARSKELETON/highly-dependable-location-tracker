@@ -37,8 +37,9 @@ public class ClientApp {
 			new HAClient(serverHost, serverPort, clientId, systemInfo);
 		} else {
             if (args.length == 5 && Boolean.parseBoolean(args[4])) {
-                new ByzantineClient(serverHost, serverPort, clientId, systemInfo);
-            } else {
+				System.err.println("I am a byzantine user");
+				new ByzantineClient(serverHost, serverPort, clientId, systemInfo, maxNearbyByzantineUsers);
+			} else {
                 new Client(serverHost, serverPort, clientId, systemInfo, maxNearbyByzantineUsers);
             }
 		}
