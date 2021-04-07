@@ -34,13 +34,13 @@ public class ClientApp {
 		SystemInfo systemInfo = objectMapper.readValue(new File("resources/grid.json"), SystemInfo.class);
 
 		if (clientId == -1) {
-			new HAClient(serverHost, serverPort, clientId, systemInfo);
+			new HAClient(serverHost, serverPort, clientId, systemInfo, false);
 		} else {
             if (args.length == 5 && Boolean.parseBoolean(args[4])) {
 				System.err.println("I am a byzantine user");
-				new ByzantineClient(serverHost, serverPort, clientId, systemInfo, maxNearbyByzantineUsers);
+				new ByzantineClient(serverHost, serverPort, clientId, systemInfo, maxNearbyByzantineUsers, ByzantineClient.Flavor.CONSPIRATOR, false);
 			} else {
-                new Client(serverHost, serverPort, clientId, systemInfo, maxNearbyByzantineUsers);
+                new Client(serverHost, serverPort, clientId, systemInfo, maxNearbyByzantineUsers, false);
             }
 		}
 	}

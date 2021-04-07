@@ -51,7 +51,7 @@ abstract class AbstractClient {
         this.serverPort = serverPort;
     }
 
-    int getClientId() {
+    public int getClientId() {
         return clientId;
     }
 
@@ -132,7 +132,6 @@ abstract class AbstractClient {
 
             // A single illegitimate proof found in the report should invalidate the whole report
             if (!(this.verifyLocationProof(proof, locationProver) && Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(proof.getWitnessId())))) {
-                System.out.println("2");
                 System.out.println("Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
                 return false;
             }
@@ -149,7 +148,7 @@ abstract class AbstractClient {
         return true;
     }
 
-    void obtainLocationReport(int userId, int ep) throws JsonProcessingException {
+    public Location obtainLocationReport(int userId, int ep) throws JsonProcessingException {
         LocationReportRequest locationRequest = new LocationReportRequest(userId, ep, 0, 0, this.clientId);
         String requestContent = locationRequest.toJsonString();
 
@@ -159,7 +158,13 @@ abstract class AbstractClient {
                 .build();
 
         LocationServer.ObtainLocationReportResponse response = locationServerServiceStub.obtainLocationReport(request);
-        verifyLocationReport(response);
+        if (verifyLocationReport(response)) {
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            String locationProverContent = Crypto.decryptRSA(response.getLocationProver().getContent(), this.privateKey);
+            return objectMapper.readValue(locationProverContent, Location.class);
+        }
+        return null;
     }
 
     private void loadPublicKeys() {
