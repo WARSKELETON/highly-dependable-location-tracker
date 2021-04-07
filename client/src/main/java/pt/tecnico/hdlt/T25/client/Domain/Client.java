@@ -20,9 +20,9 @@ import java.util.stream.Collectors;
 import static pt.tecnico.hdlt.T25.crypto.Crypto.getPriv;
 
 public class Client extends AbstractClient {
-    private static final String LOCATION_PROOF_REQUEST = "proof";
-    private static final String SUBMIT_LOCATION_REPORT = "submit";
-    private static final String OBTAIN_LOCATION_REPORT = "obtain";
+    static final String LOCATION_PROOF_REQUEST = "proof";
+    static final String SUBMIT_LOCATION_REPORT = "submit";
+    static final String OBTAIN_LOCATION_REPORT = "obtain";
     private static final int CLIENT_ORIGINAL_PORT = 8000;
 
     private final int maxNearbyByzantineUsers;
@@ -37,6 +37,10 @@ public class Client extends AbstractClient {
         this.connectToClients();
         this.setPrivateKey(getPriv("client" + clientId + "-priv.key"));
         this.eventLoop();
+    }
+
+    public int getMaxNearbyByzantineUsers() {
+        return maxNearbyByzantineUsers;
     }
 
     public Map<Integer, ProximityServiceGrpc.ProximityServiceStub> getProximityServiceStubs() {
@@ -78,7 +82,7 @@ public class Client extends AbstractClient {
                 .collect(Collectors.toList());
     }
 
-    private boolean verifyLocationProofResponse(LocationProof originalLocationProof, String content) {
+    boolean verifyLocationProofResponse(LocationProof originalLocationProof, String content) {
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             LocationProof locationProof = objectMapper.readValue(content, LocationProof.class);
@@ -94,7 +98,7 @@ public class Client extends AbstractClient {
         return false;
     }
 
-    void createLocationReport(int ep, int latitude, int longitude) throws InterruptedException {
+    boolean createLocationReport(int ep, int latitude, int longitude) throws InterruptedException {
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
         Location location = this.getSystemInfo().getGrid().stream()
@@ -115,11 +119,14 @@ public class Client extends AbstractClient {
             Consumer<Proximity.LocationProofResponse> requestObserver = new Consumer<>() {
                 @Override
                 public void accept(Proximity.LocationProofResponse response) {
+                    if (finishLatch.getCount() == 0) return;
                     if (Crypto.verify(response.getContent(), response.getSignature(), getUserPublicKey(witnessId)) && verifyLocationProofResponse(locationProof, response.getContent())) {
                         locationProofsContent.put(witnessId, response.getContent());
                         locationProofsSignatures.put(witnessId, response.getSignature());
-                        System.out.println(String.format("Received Proof from %s...", witnessId));
+                        System.out.println(String.format("Received legitimate proof from %s...", witnessId));
                         finishLatch.countDown();
+                    } else {
+                        System.out.println(String.format("Received illegitimate proof from %s...", witnessId));
                     }
                 }
             };
@@ -135,10 +142,12 @@ public class Client extends AbstractClient {
             String signature = location.toJsonString() + locationProofsContent.values().stream().reduce("", String::concat);
             LocationReport locationReport = new LocationReport(location, Crypto.sign(signature, this.getPrivateKey()), locationProofsContent, locationProofsSignatures);
             locationReports.put(ep, locationReport);
+            return true;
         }
+        return false;
     }
 
-    private void requestLocationProof(LocationProof locationProof, int witnessId, CountDownLatch finishLatch, Consumer<Proximity.LocationProofResponse> callback) {
+    void requestLocationProof(LocationProof locationProof, int witnessId, CountDownLatch finishLatch, Consumer<Proximity.LocationProofResponse> callback) {
 
         String content = locationProof.toJsonString();
 
@@ -165,8 +174,15 @@ public class Client extends AbstractClient {
         System.out.println("Requested " + witnessId);
     }
 
-    private void submitLocationReport(int ep) {
+    void submitLocationReport(int ep) throws InterruptedException {
         LocationReport locationReport = locationReports.get(ep);
+        Location myLocation = this.getMyLocation(ep);
+
+        if (locationReport == null) {
+            if (!createLocationReport(ep, myLocation.getLatitude(), myLocation.getLongitude())) return;
+            locationReport = locationReports.get(ep);
+        }
+
         List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
 
         for (Integer witnessId : locationReport.getLocationProofsContent().keySet()) {
@@ -212,7 +228,11 @@ public class Client extends AbstractClient {
 
         else if (args[0].equals(SUBMIT_LOCATION_REPORT)) {
             int ep = Integer.parseInt(args[1]);
-            submitLocationReport(ep);
+            try {
+                submitLocationReport(ep);
+            } catch (InterruptedException ex) {
+                System.err.println("Caught Interrupted exception");
+            }
         }
 
         else if (args[0].equals(OBTAIN_LOCATION_REPORT)) {
@@ -228,7 +248,7 @@ public class Client extends AbstractClient {
             System.out.println("Type invalid. Possible types are car and person.");
     }
 
-    private Location getMyLocation(int ep) {
+    Location getMyLocation(int ep) {
         return this.getSystemInfo().getGrid().stream().filter(location ->
                 location.getEp() == ep &&
                         location.getUserId() == this.getClientId()).collect(Collectors.toList()).get(0);

@@ -1,5 +1,7 @@
 package pt.tecnico.hdlt.T25.client.Domain;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import pt.tecnico.hdlt.T25.Proximity;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
@@ -7,59 +9,214 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 public class ByzantineClient extends Client {
 
-    public ByzantineClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo) throws IOException {
-        super(serverHost, serverPort, clientId, systemInfo, 0);
+    public ByzantineClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxNearbyByzantineUsers) throws IOException {
+        super(serverHost, serverPort, clientId, systemInfo, maxNearbyByzantineUsers);
     }
 
     @Override
-    void createLocationReport(int ep, int latitude, int longitude) {
+    boolean createLocationReport(int ep, int latitude, int longitude) throws InterruptedException {
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
-        Location location = this.getSystemInfo().getGrid().stream()
-                .filter(location1 -> location1.getEp() == ep && location1.getUserId() == this.getClientId())
-                .collect(Collectors.toList())
-                .get(0);
+        Location location = new Location(this.getClientId(), ep, latitude, longitude);
 
-        List<Integer> nearbyUsers = getNearbyUsers(location);
+        List<Integer> nearbyUsers = getNearbyUsers(getMyLocation(ep));
+
+        final CountDownLatch finishLatch = new CountDownLatch(this.getMaxNearbyByzantineUsers());
+
         System.out.println("Nearby users: " + nearbyUsers.size());
         for (int witnessId : nearbyUsers) {
             System.out.println(String.format("Sending Location Proof Request to %s...", witnessId));
 
             LocationProof locationProof = new LocationProof(location.getUserId(), location.getEp(), location.getLatitude(), location.getLongitude(), witnessId);
-            String content = locationProof.toJsonString();
 
-            Proximity.LocationProofRequest request = Proximity.LocationProofRequest.newBuilder()
-                    .setContent(content)
-                    .setSignature(Crypto.sign(content, this.getPrivateKey()))
-                    .build();
+            Consumer<Proximity.LocationProofResponse> requestObserver = new Consumer<>() {
+                @Override
+                public void accept(Proximity.LocationProofResponse response) {
+                    if (Crypto.verify(response.getContent(), response.getSignature(), getUserPublicKey(witnessId)) && verifyLocationProofResponse(locationProof, response.getContent())) {
+                        locationProofsContent.put(witnessId, response.getContent());
+                        locationProofsSignatures.put(witnessId, response.getSignature());
+                        System.out.println(String.format("Received legitimate proof from %s...", witnessId));
+                        finishLatch.countDown();
+                    } else {
+                        System.out.println(String.format("Received illegitimate proof from %s...", witnessId));
+                    }
+                }
+            };
 
-            /*Proximity.LocationProofResponse response = getProximityServiceStubs().get(witnessId).requestLocationProof(request);
-
-            // Byzantine user tries to create a false proof of its own location
-            if (Crypto.verify(response.getContent(), response.getSignature(), this.getUserPublicKey(witnessId))) {
-                locationProofsContent.put(witnessId, response.getContent());
-                locationProofsSignatures.put(witnessId, response.getSignature());
-                System.out.println(String.format("Received Proof from %s...", witnessId));
-            } else {
-                System.out.println(String.format("Illegitimate Proof from %s...", witnessId));
-            }*/
+            this.requestLocationProof(locationProof, witnessId, finishLatch, requestObserver);
         }
 
-        String signature = location.toJsonString() + locationProofsSignatures.values().stream().reduce("", String::concat);
+        finishLatch.await(20, TimeUnit.SECONDS);
+
+        long count = finishLatch.getCount();
+        System.out.println("Count " + count);
+
+        // If necessary build own fake locations proof to complete quorum
+        while (count > 0) {
+            LocationProof locationProof = new LocationProof(this.getClientId(), ep, latitude, longitude, this.getClientId());
+            locationProofsContent.put(this.getClientId(), locationProof.toJsonString());
+            locationProofsSignatures.put(this.getClientId(), Crypto.sign(locationProof.toJsonString(), this.getPrivateKey()));
+
+            count--;
+        }
+
+        String signature = location.toJsonString() + locationProofsContent.values().stream().reduce("", String::concat);
         LocationReport locationReport = new LocationReport(location, Crypto.sign(signature, this.getPrivateKey()), locationProofsContent, locationProofsSignatures);
         getLocationReports().put(ep, locationReport);
+        return true;
     }
 
-    // Byzantine user responds (falsely) to a proof of location request on behalf of the impersonated user
     @Override
-    public boolean verifyLocationProofRequest(Proximity.LocationProofRequest request) throws IOException {
-        boolean success = true;
-        if (Math.random() < 0.25)
-            success = false;
-        return success || super.verifyLocationProofRequest(request);
+    public boolean verifyLocationProofRequest(Proximity.LocationProofRequest request) {
+        return true;
+    }
+
+    @Override
+    public Proximity.LocationProofResponse buildLocationProof(Proximity.LocationProofRequest request) throws JsonProcessingException {
+
+        return buildLegitimateLocationProof(request);
+    }
+
+    // Since already "verified" it can sign and send. Byzantine behaviour at verifyLocationProofRequest
+    private Proximity.LocationProofResponse buildLegitimateLocationProof(Proximity.LocationProofRequest request) throws JsonProcessingException {
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        LocationProof locationProof = objectMapper.readValue(request.getContent(), LocationProof.class);
+
+        String content = locationProof.toJsonString();
+
+        return Proximity.LocationProofResponse
+                .newBuilder()
+                .setContent(content)
+                .setSignature(Crypto.sign(content, this.getPrivateKey()))
+                .build();
+    }
+
+    // Byzantine user sleeps for 70 seconds, not sending a responds
+    private Proximity.LocationProofResponse buildLocationProofNoResponse(Proximity.LocationProofRequest request) throws JsonProcessingException {
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        LocationProof locationProof = objectMapper.readValue(request.getContent(), LocationProof.class);
+
+        String content = locationProof.toJsonString();
+
+        try {
+            Thread.sleep(70000);
+        } catch (InterruptedException e) {
+            System.out.println("Error when sleeping.");
+        }
+
+        return Proximity.LocationProofResponse
+                .newBuilder()
+                .setContent(content)
+                .setSignature(Crypto.sign(content, this.getPrivateKey()))
+                .build();
+    }
+
+    // Byzantine user responds impersonating as another witness
+    private Proximity.LocationProofResponse buildFalseLocationProofImpersonate(Proximity.LocationProofRequest request) throws JsonProcessingException {
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        LocationProof locationProof = objectMapper.readValue(request.getContent(), LocationProof.class);
+
+        List<Integer> nearbyUsers = getNearbyUsers(getMyLocation(locationProof.getEp()));
+
+        locationProof.setWitnessId(nearbyUsers.get(new Random().nextInt(nearbyUsers.size())));
+
+        String content = locationProof.toJsonString();
+
+        return Proximity.LocationProofResponse
+                .newBuilder()
+                .setContent(content)
+                .setSignature(Crypto.sign(content, this.getPrivateKey()))
+                .build();
+    }
+
+    // Byzantine user responds spoofing the prover's location
+    private Proximity.LocationProofResponse buildFalseLocationProofCoords(Proximity.LocationProofRequest request) throws JsonProcessingException {
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        LocationProof locationProof = objectMapper.readValue(request.getContent(), LocationProof.class);
+
+        List<Location> grid = getSystemInfo().getGrid();
+        Location randomLocation = grid.get(new Random().nextInt(grid.size()));
+
+        locationProof.setLatitude(randomLocation.getLatitude());
+        locationProof.setLongitude(randomLocation.getLongitude());
+
+        String content = locationProof.toJsonString();
+
+        return Proximity.LocationProofResponse
+                .newBuilder()
+                .setContent(content)
+                .setSignature(Crypto.sign(content, this.getPrivateKey()))
+                .build();
+    }
+
+    // Byzantine user fucking with the signature
+    private Proximity.LocationProofResponse buildFalseLocationProofSignature(Proximity.LocationProofRequest request) throws JsonProcessingException {
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        LocationProof locationProof = objectMapper.readValue(request.getContent(), LocationProof.class);
+        LocationProof fakeLocationProof = objectMapper.readValue(request.getContent(), LocationProof.class);
+        fakeLocationProof.setEp(locationProof.getEp() + 1);
+
+        String content = locationProof.toJsonString();
+        String fakeContent = fakeLocationProof.toJsonString();
+
+        return Proximity.LocationProofResponse
+                .newBuilder()
+                .setContent(content)
+                .setSignature(Crypto.sign(fakeContent, this.getPrivateKey()))
+                .build();
+    }
+
+    @Override
+    void parseCommand(String cmd) {
+        String[] args = cmd.split(" ");
+
+        if (args.length < 2) {
+            return;
+        }
+
+        if (args[0].equals(LOCATION_PROOF_REQUEST)) {
+            int ep = Integer.parseInt(args[1]);
+            int latitude = Integer.parseInt(args[2]);
+            int longitude = Integer.parseInt(args[3]);
+            try {
+                createLocationReport(ep, latitude, longitude);
+            } catch (Exception e) {
+                System.err.println("Caught Interrupted exception");
+            }
+        }
+
+        else if (args[0].equals(SUBMIT_LOCATION_REPORT)) {
+            int ep = Integer.parseInt(args[1]);
+            try {
+                submitLocationReport(ep);
+            } catch (InterruptedException ex) {
+                System.err.println("Caught Interrupted exception");
+            }
+        }
+
+        else if (args[0].equals(OBTAIN_LOCATION_REPORT)) {
+            int ep = Integer.parseInt(args[1]);
+            try {
+                obtainLocationReport(this.getClientId(), ep);
+            } catch (JsonProcessingException ex) {
+                System.err.println("Caught JSON Processing exception");
+            }
+        }
+
+        else
+            System.out.println("Type invalid. Possible types are car and person.");
     }
 }
