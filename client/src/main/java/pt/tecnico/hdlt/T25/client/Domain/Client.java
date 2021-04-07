@@ -78,7 +78,23 @@ public class Client extends AbstractClient {
                 .collect(Collectors.toList());
     }
 
-    void createLocationReport(int ep) throws InterruptedException {
+    private boolean verifyLocationProofResponse(LocationProof originalLocationProof, String content) {
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            LocationProof locationProof = objectMapper.readValue(content, LocationProof.class);
+
+            return locationProof.getEp() == originalLocationProof.getEp() &&
+                    locationProof.getUserId() == originalLocationProof.getUserId() &&
+                    locationProof.getLatitude() == originalLocationProof.getLatitude() &&
+                    locationProof.getLongitude() == originalLocationProof.getLongitude() &&
+                    locationProof.getWitnessId() == originalLocationProof.getWitnessId();
+        } catch (JsonProcessingException ex) {
+            System.err.println("Failed to process JSON in proof response.");
+        }
+        return false;
+    }
+
+    void createLocationReport(int ep, int latitude, int longitude) throws InterruptedException {
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
         Location location = this.getSystemInfo().getGrid().stream()
@@ -88,7 +104,7 @@ public class Client extends AbstractClient {
 
         List<Integer> nearbyUsers = getNearbyUsers(location);
 
-        final CountDownLatch finishLatch = new CountDownLatch(this.maxNearbyByzantineUsers + 1);
+        final CountDownLatch finishLatch = new CountDownLatch(this.maxNearbyByzantineUsers);
 
         System.out.println("Nearby users: " + nearbyUsers.size());
         for (int witnessId : nearbyUsers) {
@@ -99,9 +115,12 @@ public class Client extends AbstractClient {
             Consumer<Proximity.LocationProofResponse> requestObserver = new Consumer<>() {
                 @Override
                 public void accept(Proximity.LocationProofResponse response) {
-                    locationProofsContent.put(witnessId, response.getContent());
-                    locationProofsSignatures.put(witnessId, response.getSignature());
-                    System.out.println(String.format("Received Proof from %s...", witnessId));
+                    if (Crypto.verify(response.getContent(), response.getSignature(), getUserPublicKey(witnessId)) && verifyLocationProofResponse(locationProof, response.getContent())) {
+                        locationProofsContent.put(witnessId, response.getContent());
+                        locationProofsSignatures.put(witnessId, response.getSignature());
+                        System.out.println(String.format("Received Proof from %s...", witnessId));
+                        finishLatch.countDown();
+                    }
                 }
             };
 
@@ -140,7 +159,6 @@ public class Client extends AbstractClient {
 
             @Override
             public void onCompleted() {
-                finishLatch.countDown();
             }
         });
 
@@ -184,8 +202,9 @@ public class Client extends AbstractClient {
 
         if (args[0].equals(LOCATION_PROOF_REQUEST)) {
             int ep = Integer.parseInt(args[1]);
+            Location myLocation = getMyLocation(ep);
             try {
-                createLocationReport(ep);
+                createLocationReport(ep, myLocation.getLatitude(), myLocation.getLongitude());
             } catch (InterruptedException ex) {
                 System.err.println("Caught Interrupted exception");
             }

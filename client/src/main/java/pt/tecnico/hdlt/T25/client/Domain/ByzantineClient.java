@@ -16,7 +16,7 @@ public class ByzantineClient extends Client {
     }
 
     @Override
-    void createLocationReport(int ep) {
+    void createLocationReport(int ep, int latitude, int longitude) {
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
         Location location = this.getSystemInfo().getGrid().stream()

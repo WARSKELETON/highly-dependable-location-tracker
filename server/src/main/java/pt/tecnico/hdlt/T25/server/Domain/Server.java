@@ -143,7 +143,7 @@ public class Server {
             return false;
         }
 
-        if (witnessIds.size() >= maxNearbyByzantineUsers + 1) {
+        if (witnessIds.size() >= maxNearbyByzantineUsers) {
             LocationReport locationReport = new LocationReport(locationProver, report.getLocationProver().getSignature(), locationProofsContent, locationProofsSignatures);
             locationReports.put(new Pair<>(locationProver.getUserId(), locationProver.getEp()), locationReport);
             this.saveCurrentServerState();
