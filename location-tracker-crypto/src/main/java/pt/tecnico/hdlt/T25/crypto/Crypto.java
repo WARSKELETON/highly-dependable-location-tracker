@@ -185,4 +185,21 @@ public class Crypto {
 
         return null;
     }
+
+    public static SecretKeySpec decryptKeyWithRSA(String key, PrivateKey privateKey) {
+        String keyContent = Crypto.decryptRSA(key, privateKey);
+        if (keyContent == null) return null;
+
+        // Decrypt encrypted content
+        byte[] decodedKey = Base64.getDecoder().decode(keyContent);
+        return new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
+    }
+
+    public static byte[] generateSecretKey() {
+        SecureRandom rnd = new SecureRandom();
+        byte [] key = new byte [32];
+        rnd.nextBytes(key);
+        return new SecretKeySpec(key, "AES").getEncoded();
+    }
+
 }

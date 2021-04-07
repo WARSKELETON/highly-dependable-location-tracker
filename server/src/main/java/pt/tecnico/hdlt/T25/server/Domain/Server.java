@@ -113,7 +113,7 @@ public class Server {
         List<Integer> witnessIds = new ArrayList<>();
 
         // Hybrid Key decryption
-        SecretKeySpec secretKeySpec = decryptKeyWithRSA(report.getKey());
+        SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(report.getKey(), this.privateKey);
         if (secretKeySpec == null) return false;
 
         String locationProverContent = Crypto.decryptAES(secretKeySpec, report.getLocationProver().getContent());
@@ -194,7 +194,7 @@ public class Server {
     private LocationServer.ObtainLocationReportResponse getLocationReportResponse(LocationReport report, int userId) {
         List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
 
-        byte[] encodedKey = generateSecretKey();
+        byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
 
         for (Integer witnessId : report.getLocationProofsContent().keySet()) {
@@ -276,21 +276,5 @@ public class Server {
         } catch (IOException e) {
             System.out.println("Failed to save current server state.");
         }
-    }
-
-    private SecretKeySpec decryptKeyWithRSA(String key) {
-        String keyContent = Crypto.decryptRSA(key, this.privateKey);
-        if (keyContent == null) return null;
-
-        // Decrypt encrypted content
-        byte[] decodedKey = Base64.getDecoder().decode(keyContent);
-        return new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
-    }
-
-    private byte[] generateSecretKey() {
-        SecureRandom rnd = new SecureRandom();
-        byte [] key = new byte [32];
-        rnd.nextBytes(key);
-        return new SecretKeySpec(key, "AES").getEncoded();
     }
 }

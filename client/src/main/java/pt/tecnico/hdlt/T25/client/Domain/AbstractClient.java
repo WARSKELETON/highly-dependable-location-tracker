@@ -124,7 +124,7 @@ abstract class AbstractClient {
     boolean verifyLocationReport(LocationServer.ObtainLocationReportResponse response) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
 
-        SecretKeySpec secretKeySpec = decryptKeyWithRSA(response.getKey());
+        SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), this.privateKey);
         if (secretKeySpec == null || response.getLocationProver() == null) return false;
 
         String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getLocationProver().getContent());
@@ -213,21 +213,5 @@ abstract class AbstractClient {
         };
 
         Executors.newSingleThreadScheduledExecutor().scheduleWithFixedDelay(task, getSystemInfo().getDurationEp(), getSystemInfo().getDurationEp(), TimeUnit.SECONDS);
-    }
-
-    byte[] generateSecretKey() {
-        SecureRandom rnd = new SecureRandom();
-        byte [] key = new byte [32];
-        rnd.nextBytes(key);
-        return new SecretKeySpec(key, "AES").getEncoded();
-    }
-
-    SecretKeySpec decryptKeyWithRSA(String key) {
-        String keyContent = Crypto.decryptRSA(key, this.privateKey);
-        if (keyContent == null) return null;
-
-        // Decrypt encrypted content
-        byte[] decodedKey = Base64.getDecoder().decode(keyContent);
-        return new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
     }
 }

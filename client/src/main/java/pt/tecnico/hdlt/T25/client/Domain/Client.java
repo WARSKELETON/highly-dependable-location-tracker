@@ -186,7 +186,7 @@ public class Client extends AbstractClient {
         }
 
         List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
-        byte[] encodedKey = generateSecretKey();
+        byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
 
         for (Integer witnessId : locationReport.getLocationProofsContent().keySet()) {
