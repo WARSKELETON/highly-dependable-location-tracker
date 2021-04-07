@@ -161,7 +161,7 @@ public class ByzantineClient extends Client {
                 .build();
     }
 
-    // Byzantine user fucking with the signature
+    // Byzantine user messing with the signature
     private Proximity.LocationProofResponse buildFalseLocationProofSignature(Proximity.LocationProofRequest request) throws JsonProcessingException {
 
         ObjectMapper objectMapper = new ObjectMapper();

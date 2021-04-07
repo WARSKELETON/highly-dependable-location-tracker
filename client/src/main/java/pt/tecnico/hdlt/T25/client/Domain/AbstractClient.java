@@ -8,9 +8,13 @@ import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.LocationServerServiceGrpc;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
+import javax.crypto.spec.SecretKeySpec;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.security.SecureRandom;
 import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -33,6 +37,7 @@ abstract class AbstractClient {
         this.serverPublicKey = Crypto.getPub("server-pub.key");
         this.connectToServer();
         this.loadPublicKeys();
+        this.updateEpochs();
     }
 
     String getServerHost() {
@@ -119,14 +124,15 @@ abstract class AbstractClient {
     boolean verifyLocationReport(LocationServer.ObtainLocationReportResponse response) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
 
-        if (response.getLocationProver() == null) return false;
+        SecretKeySpec secretKeySpec = decryptKeyWithRSA(response.getKey());
+        if (secretKeySpec == null || response.getLocationProver() == null) return false;
 
-        String locationProverContent = Crypto.decryptRSA(response.getLocationProver().getContent(), this.privateKey);
+        String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getLocationProver().getContent());
         Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
         List<String> locationProofsContent = new ArrayList<>();
 
         for (LocationServer.LocationMessage locationProof : response.getLocationProofsList()) {
-            String locationProofContent = Crypto.decryptRSA(locationProof.getContent(), this.privateKey);
+            String locationProofContent = Crypto.decryptAES(secretKeySpec, locationProof.getContent());
             LocationProof proof = objectMapper.readValue(locationProofContent, LocationProof.class);
             locationProofsContent.add(locationProofContent);
 
@@ -153,7 +159,10 @@ abstract class AbstractClient {
         LocationReportRequest locationRequest = new LocationReportRequest(userId, ep, 0, 0, this.clientId);
         String requestContent = locationRequest.toJsonString();
 
+
+
         LocationServer.ObtainLocationReportRequest request = LocationServer.ObtainLocationReportRequest.newBuilder()
+
                 .setContent(Crypto.encryptRSA(requestContent, this.serverPublicKey))
                 .setSignature(Crypto.sign(requestContent, this.privateKey))
                 .build();
@@ -195,5 +204,30 @@ abstract class AbstractClient {
         } finally {
             System.out.println("> Closing");
         }
+    }
+
+    void updateEpochs() {
+        Runnable task = () -> {
+            getSystemInfo().updateCurrentEp();
+            System.out.println("Changed epoch: " + getSystemInfo().getCurrentEp());
+        };
+
+        Executors.newSingleThreadScheduledExecutor().scheduleWithFixedDelay(task, getSystemInfo().getDurationEp(), getSystemInfo().getDurationEp(), TimeUnit.SECONDS);
+    }
+
+    byte[] generateSecretKey() {
+        SecureRandom rnd = new SecureRandom();
+        byte [] key = new byte [32];
+        rnd.nextBytes(key);
+        return new SecretKeySpec(key, "AES").getEncoded();
+    }
+
+    SecretKeySpec decryptKeyWithRSA(String key) {
+        String keyContent = Crypto.decryptRSA(key, this.privateKey);
+        if (keyContent == null) return null;
+
+        // Decrypt encrypted content
+        byte[] decodedKey = Base64.getDecoder().decode(keyContent);
+        return new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
     }
 }

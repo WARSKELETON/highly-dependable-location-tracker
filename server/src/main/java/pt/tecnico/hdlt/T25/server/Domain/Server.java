@@ -14,15 +14,15 @@ import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 import pt.tecnico.hdlt.T25.server.Services.LocationServerServiceImpl;
 
+import javax.crypto.spec.SecretKeySpec;
 import java.io.File;
 import java.io.IOException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.security.SecureRandom;
+import java.util.*;
 
+import static pt.tecnico.hdlt.T25.server.ServerApp.BACKUP_RECOVERY_FILE_PATH;
 import static pt.tecnico.hdlt.T25.server.ServerApp.SERVER_RECOVERY_FILE_PATH;
 
 public class Server {
@@ -32,8 +32,8 @@ public class Server {
     private int maxNearbyByzantineUsers;
 
     private final PrivateKey privateKey;
-    private Map<Integer, PublicKey> clientPublicKeys;
-    private Map<Pair<Integer, Integer>, LocationReport> locationReports; // <UserId, Epoch> to Location Report
+    private final Map<Integer, PublicKey> clientPublicKeys;
+    private final Map<Pair<Integer, Integer>, LocationReport> locationReports; // <UserId, Epoch> to Location Report
 
     public Server(int port, int numberOfUsers, int step, int maxNearbyByzantineUsers) throws IOException, InterruptedException {
         this.port = port;
@@ -50,31 +50,39 @@ public class Server {
 
     private void loadPreviousState() {
         try {
-            JsonFactory jsonFactory = new JsonFactory();
-            ObjectMapper objectMapper = new ObjectMapper(jsonFactory);
-
-            JsonNode objectNode = objectMapper.readTree(new File(SERVER_RECOVERY_FILE_PATH));
-            objectMapper.configure(JsonParser.Feature.AUTO_CLOSE_SOURCE, true);
-
-            port = objectNode.get("port").asInt();
-            numberOfUsers = objectNode.get("numberOfUsers").asInt();
-            step = objectNode.get("step").asInt();
-            maxNearbyByzantineUsers = objectNode.get("maxNearbyByzantineUsers").asInt();
-            JsonNode arrayNode = objectNode.get("locationReports");
-
-            for (JsonNode jsonNode : arrayNode) {
-                Integer userId = jsonNode.get("userId").asInt();
-                Integer epoch = jsonNode.get("epoch").asInt();
-                String res = jsonNode.get("content").asText();
-
-                LocationReport locationReport = objectMapper.readValue(res, LocationReport.class);
-
-                locationReports.put(new Pair<>(userId, epoch), locationReport);
+            try {
+                recoverServerState(SERVER_RECOVERY_FILE_PATH);
+            }
+            catch (IOException|NullPointerException e) {
+                recoverServerState(BACKUP_RECOVERY_FILE_PATH);
             }
         }
-        catch (IOException e) {
+        catch (IOException|NullPointerException e) {
             System.out.println("Failed to parse previous state.");
-            System.out.println(e.getMessage());
+        }
+    }
+
+    private void recoverServerState(final String filepath) throws IOException {
+        JsonFactory jsonFactory = new JsonFactory();
+        ObjectMapper objectMapper = new ObjectMapper(jsonFactory);
+
+        JsonNode objectNode = objectMapper.readTree(new File(filepath));
+        objectMapper.configure(JsonParser.Feature.AUTO_CLOSE_SOURCE, true);
+
+        port = objectNode.get("port").asInt();
+        numberOfUsers = objectNode.get("numberOfUsers").asInt();
+        step = objectNode.get("step").asInt();
+        maxNearbyByzantineUsers = objectNode.get("maxNearbyByzantineUsers").asInt();
+        JsonNode arrayNode = objectNode.get("locationReports");
+
+        for (JsonNode jsonNode : arrayNode) {
+            Integer userId = jsonNode.get("userId").asInt();
+            Integer epoch = jsonNode.get("epoch").asInt();
+            String res = jsonNode.get("content").asText();
+
+            LocationReport locationReport = objectMapper.readValue(res, LocationReport.class);
+
+            locationReports.put(new Pair<>(userId, epoch), locationReport);
         }
     }
     private void startServer() throws IOException, InterruptedException {
@@ -104,7 +112,11 @@ public class Server {
         ObjectMapper objectMapper = new ObjectMapper();
         List<Integer> witnessIds = new ArrayList<>();
 
-        String locationProverContent = Crypto.decryptRSA(report.getLocationProver().getContent(), this.privateKey);
+        // Hybrid Key decryption
+        SecretKeySpec secretKeySpec = decryptKeyWithRSA(report.getKey());
+        if (secretKeySpec == null) return false;
+
+        String locationProverContent = Crypto.decryptAES(secretKeySpec, report.getLocationProver().getContent());
         if (locationProverContent == null) return false;
 
         Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
@@ -119,7 +131,7 @@ public class Server {
 
         // Check each location proof in the report
         for (LocationServer.LocationMessage locationProof : report.getLocationProofsList()) {
-            String locationProofContent = Crypto.decryptRSA(locationProof.getContent(), this.privateKey);
+            String locationProofContent = Crypto.decryptAES(secretKeySpec, locationProof.getContent());
             if (locationProofContent == null) continue;
 
             LocationProof proof = objectMapper.readValue(locationProofContent, LocationProof.class);
@@ -182,12 +194,15 @@ public class Server {
     private LocationServer.ObtainLocationReportResponse getLocationReportResponse(LocationReport report, int userId) {
         List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
 
+        byte[] encodedKey = generateSecretKey();
+        SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
+
         for (Integer witnessId : report.getLocationProofsContent().keySet()) {
             String locationProofContent = report.getLocationProofsContent().get(witnessId);
 
             locationProofMessages.add(
                     LocationServer.LocationMessage.newBuilder()
-                            .setContent(Crypto.encryptRSA(locationProofContent, this.getUserPublicKey(userId)))
+                            .setContent(Crypto.encryptAES(secretKeySpec, locationProofContent))
                             .setSignature(report.getLocationProofsSignature().get(witnessId))
                             .build()
             );
@@ -195,9 +210,10 @@ public class Server {
 
         String serverSignature = report.getLocationProver().toJsonString() + report.getLocationProofsContent().values().stream().reduce("", String::concat);
         return LocationServer.ObtainLocationReportResponse.newBuilder()
+                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getUserPublicKey(userId)))
                 .setLocationProver(
                         LocationServer.LocationMessage.newBuilder()
-                                .setContent(Crypto.encryptRSA(report.getLocationProver().toJsonString(), this.getUserPublicKey(userId)))
+                                .setContent(Crypto.encryptAES(secretKeySpec, report.getLocationProver().toJsonString()))
                                 .setSignature(report.getLocationProverSignature())
                                 .build())
                 .addAllLocationProofs(locationProofMessages)
@@ -206,8 +222,8 @@ public class Server {
     }
 
     public LocationServer.ObtainUsersAtLocationResponse obtainUsersAtLocation(LocationServer.ObtainUsersAtLocationRequest request) throws JsonProcessingException {
-
         ObjectMapper objectMapper = new ObjectMapper();
+
         String requestContent = Crypto.decryptRSA(request.getContent(), this.privateKey);
         Location locationRequest = objectMapper.readValue(requestContent, Location.class);
 
@@ -256,8 +272,25 @@ public class Server {
             node.set("locationReports", arrayNode);
 
             objectMapper.writeValue(new File(SERVER_RECOVERY_FILE_PATH), node);
+            objectMapper.writeValue(new File(BACKUP_RECOVERY_FILE_PATH), node);
         } catch (IOException e) {
             System.out.println("Failed to save current server state.");
         }
+    }
+
+    private SecretKeySpec decryptKeyWithRSA(String key) {
+        String keyContent = Crypto.decryptRSA(key, this.privateKey);
+        if (keyContent == null) return null;
+
+        // Decrypt encrypted content
+        byte[] decodedKey = Base64.getDecoder().decode(keyContent);
+        return new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
+    }
+
+    private byte[] generateSecretKey() {
+        SecureRandom rnd = new SecureRandom();
+        byte [] key = new byte [32];
+        rnd.nextBytes(key);
+        return new SecretKeySpec(key, "AES").getEncoded();
     }
 }
