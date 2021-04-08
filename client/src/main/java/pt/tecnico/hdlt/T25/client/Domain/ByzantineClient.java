@@ -204,38 +204,42 @@ public class ByzantineClient extends Client {
     }
 
     @Override
-    void parseCommand(String cmd) throws GeneralSecurityException, JsonProcessingException {
+    void parseCommand(String cmd) throws JsonProcessingException {
         String[] args = cmd.split(" ");
 
+        if (args.length < 2) {
+            return;
+        }
+
         try {
-            if (args[0].equals(LOCATION_PROOF_REQUEST) && args.length == 4) {
-                int ep = Integer.parseInt(args[1]);
-                int latitude = Integer.parseInt(args[2]);
-                int longitude = Integer.parseInt(args[3]);
-                createLocationReport(ep, latitude, longitude);
-            } catch (InterruptedException e) {
-                System.err.println("Caught Interrupted exception");
+            switch (args[0]) {
+                case LOCATION_PROOF_REQUEST: {
+                    int ep = Integer.parseInt(args[1]);
+                    int latitude = Integer.parseInt(args[2]);
+                    int longitude = Integer.parseInt(args[3]);
+                    createLocationReport(ep, latitude, longitude);
+                    break;
+                }
+                case SUBMIT_LOCATION_REPORT: {
+                    int ep = Integer.parseInt(args[1]);
+                    submitLocationReport(ep);
+                    break;
+                }
+                case OBTAIN_LOCATION_REPORT: {
+                    int ep = Integer.parseInt(args[1]);
+                    obtainLocationReport(this.getClientId(), ep);
+                    break;
+                }
+                default:
+                    System.out.println("Invalid operation or invalid number of arguments. Possible operations are proof, submit and obtain.");
+                    break;
             }
-        }
-
-        else if (args[0].equals(SUBMIT_LOCATION_REPORT)) {
-            int ep = Integer.parseInt(args[1]);
-            try {
-                submitLocationReport(ep);
-            } catch (InterruptedException ex) {
-                System.err.println("Caught Interrupted exception");
-            } catch (StatusRuntimeException ex2) {
-                System.err.println(ex2.getMessage());
-            }
-        }
-
-        else if (args[0].equals(OBTAIN_LOCATION_REPORT)) {
-            int ep = Integer.parseInt(args[1]);
-            try {
-                obtainLocationReport(this.getClientId(), ep);
-            } catch (StatusRuntimeException ex2) {
-                System.err.println(ex2.getMessage());
-            }
+        } catch (InterruptedException ex) {
+            System.err.println("Caught Interrupted exception");
+        } catch (StatusRuntimeException ex) {
+            System.err.println(ex.getMessage());
+        } catch (GeneralSecurityException ex) {
+            System.err.println("Caught No Such Algorithm exception");
         }
     }
 }

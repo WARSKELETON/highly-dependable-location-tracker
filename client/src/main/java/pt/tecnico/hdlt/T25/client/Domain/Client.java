@@ -211,37 +211,50 @@ public class Client extends AbstractClient {
                 .build();
 
         LocationServer.SubmitLocationReportResponse response = getLocationServerServiceStub().submitLocationReport(request);
-        String locationProverContent = Crypto.decryptRSA(response.getContent(), this.getPrivateKey());
+
+        secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), this.getPrivateKey());
+        String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getContent());
         if (Crypto.verify(locationProverContent, response.getSignature(), this.getServerPublicKey()))
             System.out.println(locationProverContent);
     }
 
     @Override
-    void parseCommand(String cmd) throws GeneralSecurityException, JsonProcessingException {
+    void parseCommand(String cmd) throws JsonProcessingException {
         String[] args = cmd.split(" ");
 
-        try {
-            if (args[0].equals(LOCATION_PROOF_REQUEST) && args.length == 1) {
-                int ep = getSystemInfo().getCurrentEp();
-                Location myLocation = getMyLocation(ep);
-                createLocationReport(ep, myLocation.getLatitude(), myLocation.getLongitude());
-            } else if (args[0].equals(SUBMIT_LOCATION_REPORT) && args.length == 2) {
-                int ep = Integer.parseInt(args[1]);
-                submitLocationReport(ep);
-            } catch (InterruptedException ex) {
-                System.err.println("Caught Interrupted exception");
-            } catch (StatusRuntimeException ex2) {
-                System.err.println(ex2.getMessage());
-            }
+        if (args.length < 2) {
+            return;
         }
 
-        else if (args[0].equals(OBTAIN_LOCATION_REPORT)) {
-            int ep = Integer.parseInt(args[1]);
-            try {
-                obtainLocationReport(this.getClientId(), ep);
-            } catch (StatusRuntimeException ex2) {
-                System.err.println(ex2.getMessage());
+        try {
+            switch (args[0]) {
+                case LOCATION_PROOF_REQUEST: {
+                    int ep = Integer.parseInt(args[1]);
+                    int latitude = Integer.parseInt(args[2]);
+                    int longitude = Integer.parseInt(args[3]);
+                    createLocationReport(ep, latitude, longitude);
+                    break;
+                }
+                case SUBMIT_LOCATION_REPORT: {
+                    int ep = Integer.parseInt(args[1]);
+                    submitLocationReport(ep);
+                    break;
+                }
+                case OBTAIN_LOCATION_REPORT: {
+                    int ep = Integer.parseInt(args[1]);
+                    obtainLocationReport(this.getClientId(), ep);
+                    break;
+                }
+                default:
+                    System.out.println("Invalid operation or invalid number of arguments. Possible operations are proof, submit and obtain.");
+                    break;
             }
+        } catch (InterruptedException ex) {
+            System.err.println("Caught Interrupted exception");
+        } catch (StatusRuntimeException ex) {
+            System.err.println(ex.getMessage());
+        } catch (GeneralSecurityException ex) {
+            System.err.println("Caught No Such Algorithm exception");
         }
     }
 

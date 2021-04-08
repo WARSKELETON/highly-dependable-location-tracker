@@ -27,13 +27,7 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 	@Override
 	public void submitLocationReport(LocationServer.SubmitLocationReportRequest request, StreamObserver<LocationServer.SubmitLocationReportResponse> responseObserver) {
 		try {
-			locationServer.verifyLocationReport(request);
-
-			// TODO Change response
-			LocationServer.SubmitLocationReportResponse response = LocationServer.SubmitLocationReportResponse.newBuilder()
-					.setContent("content")
-					.setSignature("signature")
-					.build();
+			LocationServer.SubmitLocationReportResponse response = locationServer.submitLocationReport(request);
 
 			responseObserver.onNext(response);
 			responseObserver.onCompleted();

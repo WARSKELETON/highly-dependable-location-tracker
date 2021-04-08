@@ -197,7 +197,6 @@ abstract class AbstractClient {
         Executors.newSingleThreadScheduledExecutor().scheduleWithFixedDelay(task, getSystemInfo().getDurationEp(), getSystemInfo().getDurationEp(), TimeUnit.SECONDS);
     }
 
-    abstract void parseCommand(String cmd);
     abstract void parseCommand(String cmd) throws GeneralSecurityException, JsonProcessingException;
 
     void eventLoop() {

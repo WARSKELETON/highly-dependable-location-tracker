@@ -133,7 +133,7 @@ public class Crypto {
         return null;
     }
 
-    public static SecretKeySpec getAESKey(String keyPath) throws GeneralSecurityException, IOException {
+    public static SecretKeySpec getAESKey(String keyPath) throws IOException {
         File file = new File("resources/keys/" + keyPath);
         String absolutePath = file.getAbsolutePath();
         FileInputStream fis = new FileInputStream(absolutePath);
@@ -161,22 +161,16 @@ public class Crypto {
         return null;
     }
 
-    public static String decryptAES(SecretKeySpec secretKeySpec, String encrypted) {
-        try {
-            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5PADDING");
-            cipher.init(Cipher.DECRYPT_MODE, secretKeySpec, new IvParameterSpec(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }));
+    public static String decryptAES(SecretKeySpec secretKeySpec, String encrypted) throws GeneralSecurityException {
+        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5PADDING");
+        cipher.init(Cipher.DECRYPT_MODE, secretKeySpec, new IvParameterSpec(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }));
 
-            byte[] original = cipher.doFinal(Base64.getDecoder().decode(encrypted));
+        byte[] original = cipher.doFinal(Base64.getDecoder().decode(encrypted));
 
-            return new String(original);
-        } catch (Exception ex) {
-            ex.printStackTrace();
-        }
-
-        return null;
+        return new String(original);
     }
 
-    public static SecretKeySpec decryptKeyWithRSA(String key, PrivateKey privateKey) {
+    public static SecretKeySpec decryptKeyWithRSA(String key, PrivateKey privateKey) throws GeneralSecurityException {
         String keyContent = Crypto.decryptRSA(key, privateKey);
         if (keyContent == null) return null;
         byte[] decodedKey = Base64.getDecoder().decode(keyContent);

@@ -117,16 +117,12 @@ public class Server {
         this.clientPublicKeys.put(-1, Crypto.getPub("ha-pub.key"));
     }
 
-    public boolean verifyLocationReport(LocationServer.SubmitLocationReportRequest report) throws IOException, GeneralSecurityException, DuplicateReportException, InvalidSignatureException, InvalidNumberOfProofsException {
+    public LocationServer.SubmitLocationReportResponse submitLocationReport(LocationServer.SubmitLocationReportRequest report) throws IOException, GeneralSecurityException, DuplicateReportException, InvalidSignatureException, InvalidNumberOfProofsException {
         ObjectMapper objectMapper = new ObjectMapper();
         List<Integer> witnessIds = new ArrayList<>();
 
-        // Hybrid Key decryption
         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(report.getKey(), this.privateKey);
-        if (secretKeySpec == null) return false;
-
         String locationProverContent = Crypto.decryptAES(secretKeySpec, report.getLocationProver().getContent());
-        if (locationProverContent == null) return false;
 
         Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
         // Duplicate location reports are deemed illegitimate
@@ -141,7 +137,6 @@ public class Server {
         // Check each location proof in the report
         for (LocationServer.LocationMessage locationProof : report.getLocationProofsList()) {
             String locationProofContent = Crypto.decryptAES(secretKeySpec, locationProof.getContent());
-            if (locationProofContent == null) continue;
 
             LocationProof proof = objectMapper.readValue(locationProofContent, LocationProof.class);
             int witnessId = proof.getWitnessId();
@@ -169,7 +164,7 @@ public class Server {
             locationReports.put(new Pair<>(locationProver.getUserId(), locationProver.getEp()), locationReport);
             this.saveCurrentServerState();
             System.out.println("Report submitted with success! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
-            return true;
+            return buildSubmitLocationReportResponse(true, locationProver.getUserId());
         }
         System.out.println("Failed to submit report! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
         throw new InvalidNumberOfProofsException(witnessIds.size(), maxNearbyByzantineUsers);
@@ -256,7 +251,7 @@ public class Server {
                 .build();
     }
 
-    private LocationServer.SubmitLocationReportResponse buildSubmitLocationReportResponse(boolean verified, int userId) throws NoSuchAlgorithmException {
+    private LocationServer.SubmitLocationReportResponse buildSubmitLocationReportResponse(boolean verified, int userId) throws GeneralSecurityException {
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
 
@@ -267,10 +262,9 @@ public class Server {
                 .build();
     }
 
-    private void saveCurrentServerState() {
-        try {
-            ObjectMapper objectMapper = new ObjectMapper();
-            ArrayNode arrayNode = objectMapper.createArrayNode();
+    private void saveCurrentServerState() throws IOException{
+        ObjectMapper objectMapper = new ObjectMapper();
+        ArrayNode arrayNode = objectMapper.createArrayNode();
 
         for (Pair<Integer, Integer> key: locationReports.keySet()) {
             ObjectNode node = objectMapper.createObjectNode();
@@ -288,11 +282,8 @@ public class Server {
         node.put("maxNearbyByzantineUsers", maxNearbyByzantineUsers);
         node.set("locationReports", arrayNode);
 
-            objectMapper.writeValue(new File(SERVER_RECOVERY_FILE_PATH), node);
-            objectMapper.writeValue(new File(BACKUP_RECOVERY_FILE_PATH), node);
-        } catch (IOException e) {
-            System.out.println("Failed to save current server state.");
-        }
+        objectMapper.writeValue(new File(SERVER_RECOVERY_FILE_PATH), node);
+        objectMapper.writeValue(new File(BACKUP_RECOVERY_FILE_PATH), node);
     }
 
     public void cleanUp() {
