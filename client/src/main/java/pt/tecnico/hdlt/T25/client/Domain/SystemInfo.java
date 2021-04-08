@@ -8,6 +8,9 @@ public class SystemInfo {
     private int step;
     private int maxEp;
 
+    private final int durationEp = 12000;
+    private int currentEp;
+
     public SystemInfo() {
     }
 
@@ -16,6 +19,7 @@ public class SystemInfo {
         this.numberOfUsers = numberOfUsers;
         this.step = step;
         this.maxEp = maxEp;
+        this.currentEp = 0;
     }
 
     public List<Location> getGrid() {
@@ -48,5 +52,17 @@ public class SystemInfo {
 
     public void setMaxEp(int maxEp) {
         this.maxEp = maxEp;
+    }
+
+    public int getDurationEp() {
+        return durationEp;
+    }
+
+    public int getCurrentEp() {
+        return currentEp;
+    }
+
+    public void updateCurrentEp() {
+        currentEp++;
     }
 }

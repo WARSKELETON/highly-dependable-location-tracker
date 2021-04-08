@@ -69,8 +69,5 @@ public class HAClient extends AbstractClient {
                 System.err.println(ex2.getMessage());
             }
         }
-
-        else
-            System.out.println("Type invalid. Possible types are car and person.");
     }
 }

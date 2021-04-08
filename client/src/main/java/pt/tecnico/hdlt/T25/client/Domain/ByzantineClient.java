@@ -207,15 +207,11 @@ public class ByzantineClient extends Client {
     void parseCommand(String cmd) throws GeneralSecurityException, JsonProcessingException {
         String[] args = cmd.split(" ");
 
-        if (args.length < 2) {
-            return;
-        }
-
-        if (args[0].equals(LOCATION_PROOF_REQUEST)) {
-            int ep = Integer.parseInt(args[1]);
-            int latitude = Integer.parseInt(args[2]);
-            int longitude = Integer.parseInt(args[3]);
-            try {
+        try {
+            if (args[0].equals(LOCATION_PROOF_REQUEST) && args.length == 4) {
+                int ep = Integer.parseInt(args[1]);
+                int latitude = Integer.parseInt(args[2]);
+                int longitude = Integer.parseInt(args[3]);
                 createLocationReport(ep, latitude, longitude);
             } catch (InterruptedException e) {
                 System.err.println("Caught Interrupted exception");
@@ -241,8 +237,5 @@ public class ByzantineClient extends Client {
                 System.err.println(ex2.getMessage());
             }
         }
-
-        else
-            System.out.println("Type invalid. Possible types are car and person.");
     }
 }

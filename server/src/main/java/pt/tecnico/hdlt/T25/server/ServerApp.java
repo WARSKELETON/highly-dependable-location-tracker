@@ -8,6 +8,7 @@ import java.security.GeneralSecurityException;
 public class ServerApp {
 
 	public static String SERVER_RECOVERY_FILE_PATH = "resources/server_state.json";
+	public static String BACKUP_RECOVERY_FILE_PATH = "resources/backup_state.json";
 
 	public static void main(String[] args) {
 		System.out.println(ServerApp.class.getSimpleName());

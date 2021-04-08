@@ -20,7 +20,6 @@ public class ProximityServiceImpl extends ProximityServiceGrpc.ProximityServiceI
 
     @Override
     public void requestLocationProof(Proximity.LocationProofRequest request, StreamObserver<Proximity.LocationProofResponse> responseObserver) {
-
         try {
             if (client.verifyLocationProofRequest(request)) {
                 System.out.println("Verified.");
