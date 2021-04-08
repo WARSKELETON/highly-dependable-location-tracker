@@ -29,14 +29,14 @@ public class Client extends AbstractClient {
     private Map<Integer, ProximityServiceGrpc.ProximityServiceStub> proximityServiceStubs;
     private Map<Integer, LocationReport> locationReports;
 
-    public Client(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxNearbyByzantineUsers) throws IOException {
+    public Client(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxNearbyByzantineUsers, boolean isTest) throws IOException {
         super(serverHost, serverPort, clientId, systemInfo);
         this.maxNearbyByzantineUsers = maxNearbyByzantineUsers;
         this.locationReports = new HashMap<>();
         this.proximityServiceStubs = new HashMap<>();
         this.connectToClients();
         this.setPrivateKey(getPriv("client" + clientId + "-priv.key"));
-        this.eventLoop();
+        if (!isTest) this.eventLoop();
     }
 
     public int getMaxNearbyByzantineUsers() {
@@ -71,7 +71,7 @@ public class Client extends AbstractClient {
         }
     }
 
-    List<Integer> getNearbyUsers(Location location) {
+    public List<Integer> getNearbyUsers(Location location) {
         int ep = location.getEp();
         double latitude = location.getLatitude();
         double longitude = location.getLongitude();
@@ -174,7 +174,7 @@ public class Client extends AbstractClient {
         System.out.println("Requested " + witnessId);
     }
 
-    void submitLocationReport(int ep) throws InterruptedException {
+    public void submitLocationReport(int ep) throws InterruptedException {
         LocationReport locationReport = locationReports.get(ep);
         Location myLocation = this.getMyLocation(ep);
 
@@ -248,7 +248,7 @@ public class Client extends AbstractClient {
             System.out.println("Type invalid. Possible types are car and person.");
     }
 
-    Location getMyLocation(int ep) {
+    public Location getMyLocation(int ep) {
         return this.getSystemInfo().getGrid().stream().filter(location ->
                 location.getEp() == ep &&
                         location.getUserId() == this.getClientId()).collect(Collectors.toList()).get(0);

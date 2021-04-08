@@ -27,9 +27,9 @@
         <mainclass>pt.tecnico.hdlt.T25.timeline.TimelineGenerator</mainclass>
 
         <gridSize>100</gridSize>
-        <numberOfUsers>20</numberOfUsers>
+        <numberOfUsers>50</numberOfUsers>
         <step>10</step>
-        <maxEp>6</maxEp>
+        <maxEp>5</maxEp>
     </properties>
 
     <dependencies>

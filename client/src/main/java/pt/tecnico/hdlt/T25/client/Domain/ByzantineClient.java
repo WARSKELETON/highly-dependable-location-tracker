@@ -17,12 +17,23 @@ import java.util.stream.Collectors;
 
 public class ByzantineClient extends Client {
 
-    public ByzantineClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxNearbyByzantineUsers) throws IOException {
-        super(serverHost, serverPort, clientId, systemInfo, maxNearbyByzantineUsers);
+    public enum Flavor {
+        IMPERSONATE,
+        SILENT,
+        SPOOFER,
+        DIGEST,
+        CONSPIRATOR
+    }
+
+    private Flavor flavor;
+
+    public ByzantineClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxNearbyByzantineUsers, Flavor flavor, boolean isTest) throws IOException {
+        super(serverHost, serverPort, clientId, systemInfo, maxNearbyByzantineUsers, isTest);
+        this.flavor = flavor;
     }
 
     @Override
-    boolean createLocationReport(int ep, int latitude, int longitude) throws InterruptedException {
+    public boolean createLocationReport(int ep, int latitude, int longitude) throws InterruptedException {
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
         Location location = new Location(this.getClientId(), ep, latitude, longitude);
@@ -81,7 +92,18 @@ public class ByzantineClient extends Client {
 
     @Override
     public Proximity.LocationProofResponse buildLocationProof(Proximity.LocationProofRequest request) throws JsonProcessingException {
-
+        switch (flavor) {
+            case IMPERSONATE:
+                return buildFalseLocationProofImpersonate(request);
+            case SILENT:
+                return buildLocationProofNoResponse(request);
+            case SPOOFER:
+                return buildFalseLocationProofCoords(request);
+            case DIGEST:
+                return buildFalseLocationProofSignature(request);
+            case CONSPIRATOR:
+                return buildLegitimateLocationProof(request);
+        }
         return buildLegitimateLocationProof(request);
     }
 
