@@ -114,21 +114,21 @@ public class Server {
         this.clientPublicKeys.put(-1, Crypto.getPub("ha-pub.key"));
     }
 
-    public LocationServer.SubmitLocationReportResponse verifyLocationReport(LocationServer.SubmitLocationReportRequest report) throws JsonProcessingException {
+    public boolean verifyLocationReport(LocationServer.SubmitLocationReportRequest report) throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         List<Integer> witnessIds = new ArrayList<>();
 
         // Hybrid Key decryption
         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(report.getKey(), this.privateKey);
-        if (secretKeySpec == null) return LocationServer.SubmitLocationReportResponse.newBuilder().build();
+        if (secretKeySpec == null) return false;
 
         String locationProverContent = Crypto.decryptAES(secretKeySpec, report.getLocationProver().getContent());
-        if (locationProverContent == null) return LocationServer.SubmitLocationReportResponse.newBuilder().build();
+        if (locationProverContent == null) return false;
 
         Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
         // Duplicate location reports are deemed illegitimate
         boolean locationReportExists = locationReports.get(new Pair<>(locationProver.getUserId(), locationProver.getEp())) != null;
-        if (locationReportExists) return respondVerificationLocationReport("Location report already in the system.", locationProver.getUserId());
+        if (locationReportExists) return false;
 
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
@@ -158,7 +158,7 @@ public class Server {
         // Verify the whole report content
         if (!Crypto.verify(locationProverContent + locationProofsContent.values().stream().reduce("", String::concat), report.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId()))) {
             System.out.println("Report failed integrity or authentication checks! User" + locationProver.getUserId() + " would be at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
-            return respondVerificationLocationReport("Report failed integrity or authentication checks!", locationProver.getUserId());
+            return false;
         }
 
         if (witnessIds.size() >= maxNearbyByzantineUsers) {
@@ -166,10 +166,10 @@ public class Server {
             locationReports.put(new Pair<>(locationProver.getUserId(), locationProver.getEp()), locationReport);
             this.saveCurrentServerState();
             System.out.println("Report submitted with success! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
-            return respondVerificationLocationReport("Report submitted with success!", locationProver.getUserId());
+            return true;
         }
         System.out.println("Failed to submit report! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
-        return respondVerificationLocationReport("Failed to submit report!", locationProver.getUserId());
+        return false;
     }
 
     private boolean verifyLocationProof(LocationProof proof, Location locationProver) {
@@ -257,10 +257,14 @@ public class Server {
                 .build();
     }
 
-    private LocationServer.SubmitLocationReportResponse respondVerificationLocationReport(String message, int userId) {
+    private LocationServer.SubmitLocationReportResponse buildSubmitLocationReportResponse(boolean verified, int userId) throws NoSuchAlgorithmException {
+        byte[] encodedKey = Crypto.generateSecretKey();
+        SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
+
         return LocationServer.SubmitLocationReportResponse.newBuilder()
-                .setContent(Crypto.encryptRSA(message, this.getUserPublicKey(userId)))
-                .setSignature(Crypto.sign(message, this.privateKey))
+                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getUserPublicKey(userId)))
+                .setContent(Crypto.encryptAES(secretKeySpec, String.valueOf(verified)))
+                .setSignature(Crypto.sign(String.valueOf(verified), this.privateKey))
                 .build();
     }
 

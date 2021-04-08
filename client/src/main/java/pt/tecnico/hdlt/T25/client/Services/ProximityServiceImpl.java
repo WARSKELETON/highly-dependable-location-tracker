@@ -23,15 +23,12 @@ public class ProximityServiceImpl extends ProximityServiceGrpc.ProximityServiceI
         try {
             if (client.verifyLocationProofRequest(request)) {
                 System.out.println("Verified.");
-                Proximity.LocationProofResponse response = client.buildLocationProof(request);
-                responseObserver.onNext(response);
-            } else {
-                System.out.println("Failed to verify location proof request.");
-                Proximity.LocationProofResponse response = Proximity.LocationProofResponse.newBuilder().build();
-                responseObserver.onNext(response);
-            }
 
-            responseObserver.onCompleted();
+                Proximity.LocationProofResponse response = client.buildLocationProof(request);
+
+                responseObserver.onNext(response);
+                responseObserver.onCompleted();
+            }
         } catch (IOException e) {
             LOGGER.info(e.getMessage());
             responseObserver.onError(Status.INVALID_ARGUMENT.withDescription(e.getMessage()).asRuntimeException());

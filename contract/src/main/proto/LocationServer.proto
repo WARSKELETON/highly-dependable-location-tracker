@@ -11,8 +11,9 @@ message SubmitLocationReportRequest {
 }
 
 message SubmitLocationReportResponse {
-  string content = 1;
-  string signature = 2;
+  string key = 1;
+  string content = 2;
+  string signature = 3;
 }
 
 message ObtainLocationReportRequest {
