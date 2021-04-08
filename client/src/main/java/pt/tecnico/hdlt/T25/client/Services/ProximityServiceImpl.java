@@ -32,7 +32,7 @@ public class ProximityServiceImpl extends ProximityServiceGrpc.ProximityServiceI
             }
         } catch (IOException e) {
             LOGGER.info(e.getMessage());
-            responseObserver.onError(Status.INVALID_ARGUMENT.withDescription(e.getMessage()).asRuntimeException());
+            responseObserver.onError(Status.ABORTED.withDescription(e.getMessage()).asRuntimeException());
         }
     }
 }

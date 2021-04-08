@@ -1,5 +1,6 @@
 package pt.tecnico.hdlt.T25.client;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import pt.tecnico.hdlt.T25.client.Domain.ByzantineClient;
@@ -33,15 +34,21 @@ public class ClientApp {
 		ObjectMapper objectMapper = new ObjectMapper();
 		SystemInfo systemInfo = objectMapper.readValue(new File("resources/grid.json"), SystemInfo.class);
 
-		if (clientId == -1) {
-			new HAClient(serverHost, serverPort, clientId, systemInfo, false);
-		} else {
-            if (args.length == 5 && Boolean.parseBoolean(args[4])) {
-				System.err.println("I am a byzantine user");
-				new ByzantineClient(serverHost, serverPort, clientId, systemInfo, maxNearbyByzantineUsers, ByzantineClient.Flavor.CONSPIRATOR, false);
+		try {
+			if (clientId == -1) {
+				new HAClient(serverHost, serverPort, clientId, systemInfo, false);
 			} else {
-                new Client(serverHost, serverPort, clientId, systemInfo, maxNearbyByzantineUsers, false);
-            }
+				if (args.length == 5 && Boolean.parseBoolean(args[4])) {
+					System.err.println("I am a byzantine user");
+					new ByzantineClient(serverHost, serverPort, clientId, systemInfo, maxNearbyByzantineUsers, ByzantineClient.Flavor.CONSPIRATOR, false);
+				} else {
+					new Client(serverHost, serverPort, clientId, systemInfo, maxNearbyByzantineUsers, false);
+				}
+			}
+		} catch (JsonProcessingException ex) {
+			System.err.println("Client crashed due to some internal error.");
 		}
+
+
 	}
 }

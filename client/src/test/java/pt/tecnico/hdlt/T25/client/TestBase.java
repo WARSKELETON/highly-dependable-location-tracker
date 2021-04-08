@@ -7,8 +7,10 @@ import org.junit.jupiter.api.BeforeAll;
 import pt.tecnico.hdlt.T25.client.Domain.ByzantineClient;
 import pt.tecnico.hdlt.T25.client.Domain.Client;
 import pt.tecnico.hdlt.T25.client.Domain.SystemInfo;
+import pt.tecnico.hdlt.T25.server.Domain.Server;
 
 import java.io.IOException;
+import java.security.GeneralSecurityException;
 import java.util.*;
 
 public class TestBase {
@@ -16,6 +18,7 @@ public class TestBase {
     private static final String TEST_GRID_FILE = "/grid.json";
 
     static List<Client> clients;
+    static Server server;
     static List<ByzantineClient> byzantineClients;
     static SystemInfo systemInfo;
 
@@ -41,20 +44,33 @@ public class TestBase {
             byzantineFlavors.put(17, ByzantineClient.Flavor.SILENT);
 
             final String serverHost = testProps.getProperty("server.host");
-            final String serverPort = testProps.getProperty("server.port");
+            final int serverPort = Integer.parseInt(testProps.getProperty("server.port"));
             final int maxNearbyByzantineUsers = Integer.parseInt(testProps.getProperty("maxNearbyByzantineUsers"));
+
+            Thread task = new Thread(() -> {
+                try {
+                    server = new Server(serverPort, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxNearbyByzantineUsers);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            });
+
+            task.start();
+
+            System.out.println(server);
 
             clients = new ArrayList<>();
             byzantineClients = new ArrayList<>();
             for (int i = 0; i < systemInfo.getNumberOfUsers(); i++) {
                 if (byzantineFlavors.containsKey(i)) {
-                    byzantineClients.add(new ByzantineClient(serverHost, Integer.parseInt(serverPort), i, systemInfo, maxNearbyByzantineUsers, byzantineFlavors.get(i), true));
+                    byzantineClients.add(new ByzantineClient(serverHost, serverPort, i, systemInfo, maxNearbyByzantineUsers, byzantineFlavors.get(i), true));
                 } else {
-                    clients.add(new Client(serverHost, Integer.parseInt(serverPort), i, systemInfo, maxNearbyByzantineUsers, true));
+                    clients.add(new Client(serverHost, serverPort, i, systemInfo, maxNearbyByzantineUsers, true));
                 }
             }
         }
-        catch (IOException e) {
+
+        catch (Exception e) {
             System.out.println(e.getMessage());
             System.err.println("Failed tests");
         }

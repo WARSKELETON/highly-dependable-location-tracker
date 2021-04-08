@@ -12,10 +12,15 @@ import io.grpc.ServerBuilder;
 import org.javatuples.Pair;
 import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
+import pt.tecnico.hdlt.T25.server.Domain.Exceptions.DuplicateReportException;
+import pt.tecnico.hdlt.T25.server.Domain.Exceptions.InvalidNumberOfProofsException;
+import pt.tecnico.hdlt.T25.server.Domain.Exceptions.InvalidSignatureException;
+import pt.tecnico.hdlt.T25.server.Domain.Exceptions.ReportNotFoundException;
 import pt.tecnico.hdlt.T25.server.Services.LocationServerServiceImpl;
 
 import java.io.File;
 import java.io.IOException;
+import java.security.GeneralSecurityException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.ArrayList;
@@ -35,7 +40,7 @@ public class Server {
     private Map<Integer, PublicKey> clientPublicKeys;
     private Map<Pair<Integer, Integer>, LocationReport> locationReports; // <UserId, Epoch> to Location Report
 
-    public Server(int port, int numberOfUsers, int step, int maxNearbyByzantineUsers) throws IOException, InterruptedException {
+    public Server(int port, int numberOfUsers, int step, int maxNearbyByzantineUsers) throws IOException, GeneralSecurityException {
         this.port = port;
         this.numberOfUsers = numberOfUsers;
         this.step = step;
@@ -71,13 +76,13 @@ public class Server {
 
                 locationReports.put(new Pair<>(userId, epoch), locationReport);
             }
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             System.out.println("Failed to parse previous state.");
             System.out.println(e.getMessage());
         }
     }
-    private void startServer() throws IOException, InterruptedException {
+
+    private void startServer() throws IOException {
         final BindableService impl = new LocationServerServiceImpl(this);
 
         io.grpc.Server server = ServerBuilder.forPort(port).addService(impl).build();
@@ -85,14 +90,13 @@ public class Server {
         server.start();
 
         System.out.println("Server started");
-        server.awaitTermination();
     }
 
     private PublicKey getUserPublicKey(int userId) {
         return clientPublicKeys.get(userId);
     }
 
-    private void loadPublicKeys() {
+    private void loadPublicKeys() throws GeneralSecurityException {
         for (int i = 0; i < this.numberOfUsers; i++) {
             String fileName = "client" + i + "-pub.key";
             this.clientPublicKeys.put(i, Crypto.getPub(fileName));
@@ -100,17 +104,16 @@ public class Server {
         this.clientPublicKeys.put(-1, Crypto.getPub("ha-pub.key"));
     }
 
-    public boolean verifyLocationReport(LocationServer.SubmitLocationReportRequest report) throws JsonProcessingException {
+    public boolean verifyLocationReport(LocationServer.SubmitLocationReportRequest report) throws IOException, GeneralSecurityException, DuplicateReportException, InvalidSignatureException, InvalidNumberOfProofsException {
         ObjectMapper objectMapper = new ObjectMapper();
         List<Integer> witnessIds = new ArrayList<>();
 
         String locationProverContent = Crypto.decryptRSA(report.getLocationProver().getContent(), this.privateKey);
-        if (locationProverContent == null) return false;
 
         Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
         // Duplicate location reports are deemed illegitimate
         boolean locationReportExists = locationReports.get(new Pair<>(locationProver.getUserId(), locationProver.getEp())) != null;
-        if (locationReportExists) return false;
+        if (locationReportExists) throw new DuplicateReportException(locationProver.getUserId(), locationProver.getEp());
 
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
@@ -120,7 +123,6 @@ public class Server {
         // Check each location proof in the report
         for (LocationServer.LocationMessage locationProof : report.getLocationProofsList()) {
             String locationProofContent = Crypto.decryptRSA(locationProof.getContent(), this.privateKey);
-            if (locationProofContent == null) continue;
 
             LocationProof proof = objectMapper.readValue(locationProofContent, LocationProof.class);
             int witnessId = proof.getWitnessId();
@@ -140,7 +142,7 @@ public class Server {
         // Verify the whole report content
         if (!Crypto.verify(locationProverContent + locationProofsContent.values().stream().reduce("", String::concat), report.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId()))) {
             System.out.println("Report failed integrity or authentication checks! User" + locationProver.getUserId() + " would be at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
-            return false;
+            throw new InvalidSignatureException();
         }
 
         if (witnessIds.size() >= maxNearbyByzantineUsers) {
@@ -151,7 +153,7 @@ public class Server {
             return true;
         }
         System.out.println("Failed to submit report! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
-        return false;
+        throw new InvalidNumberOfProofsException(witnessIds.size(), maxNearbyByzantineUsers);
     }
 
     private boolean verifyLocationProof(LocationProof proof, Location locationProver) {
@@ -161,19 +163,19 @@ public class Server {
                 proof.getLongitude() == locationProver.getLongitude();
     }
 
-    public LocationServer.ObtainLocationReportResponse obtainLocationReport(LocationServer.ObtainLocationReportRequest report) throws JsonProcessingException {
+    public LocationServer.ObtainLocationReportResponse obtainLocationReport(LocationServer.ObtainLocationReportRequest report) throws JsonProcessingException, GeneralSecurityException, InvalidSignatureException, ReportNotFoundException {
         ObjectMapper objectMapper = new ObjectMapper();
         String requestContent = Crypto.decryptRSA(report.getContent(), this.privateKey);
         LocationReportRequest locationRequest = objectMapper.readValue(requestContent, LocationReportRequest.class);
 
         if (!Crypto.verify(requestContent, report.getSignature(), this.getUserPublicKey(locationRequest.getSourceClientId()))) {
             System.out.println("Some user tried to illegitimately request " + locationRequest.getUserId() + " location at epoch " + locationRequest.getEp());
-            return LocationServer.ObtainLocationReportResponse.newBuilder().build();
+            throw new InvalidSignatureException();
         }
 
         LocationReport locationReport = locationReports.get(new Pair<>(locationRequest.getUserId(), locationRequest.getEp()));
         if (locationReport == null) {
-            return LocationServer.ObtainLocationReportResponse.newBuilder().build();
+            throw new ReportNotFoundException(locationRequest.getUserId(), locationRequest.getEp());
         }
 
         System.out.println("Obtaining location for " + locationRequest.getUserId() + " at epoch " + locationRequest.getEp());
@@ -181,7 +183,7 @@ public class Server {
         return this.getLocationReportResponse(locationReport, locationRequest.getSourceClientId());
     }
 
-    private LocationServer.ObtainLocationReportResponse getLocationReportResponse(LocationReport report, int userId) {
+    private LocationServer.ObtainLocationReportResponse getLocationReportResponse(LocationReport report, int userId) throws GeneralSecurityException {
         List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
 
         for (Integer witnessId : report.getLocationProofsContent().keySet()) {
@@ -207,19 +209,15 @@ public class Server {
                 .build();
     }
 
-    public LocationServer.ObtainUsersAtLocationResponse obtainUsersAtLocation(LocationServer.ObtainUsersAtLocationRequest request) throws JsonProcessingException {
+    public LocationServer.ObtainUsersAtLocationResponse obtainUsersAtLocation(LocationServer.ObtainUsersAtLocationRequest request) throws JsonProcessingException, GeneralSecurityException, InvalidSignatureException {
 
         ObjectMapper objectMapper = new ObjectMapper();
         String requestContent = Crypto.decryptRSA(request.getContent(), this.privateKey);
         Location locationRequest = objectMapper.readValue(requestContent, Location.class);
 
-        if (locationRequest == null) {
-            return LocationServer.ObtainUsersAtLocationResponse.newBuilder().build();
-        }
-
         if (!Crypto.verify(requestContent, request.getSignature(), this.getUserPublicKey(-1))) {
             System.out.println("Some user tried to illegitimately request " + locationRequest.getUserId() + " location at epoch " + locationRequest.getEp());
-            return LocationServer.ObtainUsersAtLocationResponse.newBuilder().build();
+            throw new InvalidSignatureException();
         }
 
         List<LocationServer.ObtainLocationReportResponse> locationReportResponses = new ArrayList<>();
@@ -236,30 +234,34 @@ public class Server {
                 .build();
     }
 
-    private void saveCurrentServerState() {
-        try {
-            ObjectMapper objectMapper = new ObjectMapper();
-            ArrayNode arrayNode = objectMapper.createArrayNode();
+    private void saveCurrentServerState() throws IOException {
+        ObjectMapper objectMapper = new ObjectMapper();
+        ArrayNode arrayNode = objectMapper.createArrayNode();
 
-            for (Pair<Integer, Integer> key: locationReports.keySet()) {
-                ObjectNode node = objectMapper.createObjectNode();
-                node.put("userId", key.getValue0());
-                node.put("epoch", key.getValue1());
-                node.put("content", locationReports.get(key).toJsonString());
-
-                arrayNode.add(node);
-            }
-
+        for (Pair<Integer, Integer> key: locationReports.keySet()) {
             ObjectNode node = objectMapper.createObjectNode();
-            node.put("port", port);
-            node.put("numberOfUsers", numberOfUsers);
-            node.put("step", step);
-            node.put("maxNearbyByzantineUsers", maxNearbyByzantineUsers);
-            node.set("locationReports", arrayNode);
+            node.put("userId", key.getValue0());
+            node.put("epoch", key.getValue1());
+            node.put("content", locationReports.get(key).toJsonString());
 
-            objectMapper.writeValue(new File(SERVER_RECOVERY_FILE_PATH), node);
-        } catch (IOException e) {
-            System.out.println("Failed to save current server state.");
+            arrayNode.add(node);
         }
+
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("port", port);
+        node.put("numberOfUsers", numberOfUsers);
+        node.put("step", step);
+        node.put("maxNearbyByzantineUsers", maxNearbyByzantineUsers);
+        node.set("locationReports", arrayNode);
+
+        File file = new File(SERVER_RECOVERY_FILE_PATH);
+        System.out.println(file.getAbsolutePath());
+        objectMapper.writeValue(file, node);
+    }
+
+    public void cleanUp() {
+        new File(SERVER_RECOVERY_FILE_PATH).delete();
+
+        locationReports = new HashMap<>();
     }
 }

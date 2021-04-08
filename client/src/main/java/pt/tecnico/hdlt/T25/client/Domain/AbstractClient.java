@@ -4,10 +4,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.grpc.StatusRuntimeException;
 import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.LocationServerServiceGrpc;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
+import java.security.GeneralSecurityException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.*;
@@ -24,7 +26,7 @@ abstract class AbstractClient {
     private SystemInfo systemInfo;
     private LocationServerServiceGrpc.LocationServerServiceBlockingStub locationServerServiceStub;
 
-    AbstractClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo) {
+    AbstractClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo) throws GeneralSecurityException {
         this.serverHost = serverHost;
         this.serverPort = serverPort;
         this.clientId = clientId;
@@ -116,7 +118,7 @@ abstract class AbstractClient {
                 proof.getLongitude() == locationProver.getLongitude();
     }
 
-    boolean verifyLocationReport(LocationServer.ObtainLocationReportResponse response) throws JsonProcessingException {
+    boolean verifyLocationReport(LocationServer.ObtainLocationReportResponse response) throws JsonProcessingException, GeneralSecurityException {
         ObjectMapper objectMapper = new ObjectMapper();
 
         if (response.getLocationProver() == null) return false;
@@ -148,7 +150,7 @@ abstract class AbstractClient {
         return true;
     }
 
-    public Location obtainLocationReport(int userId, int ep) throws JsonProcessingException {
+    public Location obtainLocationReport(int userId, int ep) throws JsonProcessingException, GeneralSecurityException {
         LocationReportRequest locationRequest = new LocationReportRequest(userId, ep, 0, 0, this.clientId);
         String requestContent = locationRequest.toJsonString();
 
@@ -157,7 +159,9 @@ abstract class AbstractClient {
                 .setSignature(Crypto.sign(requestContent, this.privateKey))
                 .build();
 
+
         LocationServer.ObtainLocationReportResponse response = locationServerServiceStub.obtainLocationReport(request);
+
         if (verifyLocationReport(response)) {
             ObjectMapper objectMapper = new ObjectMapper();
 
@@ -167,7 +171,7 @@ abstract class AbstractClient {
         return null;
     }
 
-    private void loadPublicKeys() {
+    private void loadPublicKeys() throws GeneralSecurityException {
         for (int i = 0; i < systemInfo.getNumberOfUsers(); i++) {
             String fileName = "client" + i + "-pub.key";
             this.publicKeys.put(i, Crypto.getPub(fileName));
@@ -178,7 +182,7 @@ abstract class AbstractClient {
         return publicKeys.get(userId);
     }
 
-    abstract void parseCommand(String cmd);
+    abstract void parseCommand(String cmd) throws GeneralSecurityException, JsonProcessingException;
 
     void eventLoop() {
         String line;

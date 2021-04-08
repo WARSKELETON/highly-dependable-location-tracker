@@ -20,7 +20,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class Crypto {
 
-    public static RSAPrivateKey getPriv(String filename) {
+    public static RSAPrivateKey getPriv(String filename) throws GeneralSecurityException {
 
         try {
             File file = new File("resources/keys/" + filename);
@@ -30,14 +30,13 @@ public class Crypto {
             PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(keyBytes);
             KeyFactory kf = KeyFactory.getInstance("RSA");
             return (RSAPrivateKey) kf.generatePrivate(spec);
-        } catch (Exception e) {
+        } catch (IOException e) {
             System.out.println("Failed to get private key.");
-
+            return null;
         }
-        return null;
     }
 
-    public static RSAPublicKey getPub(String filename) {
+    public static RSAPublicKey getPub(String filename) throws GeneralSecurityException {
 
         try {
             File file = new File("resources/keys/" + filename);
@@ -47,24 +46,19 @@ public class Crypto {
             X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
             KeyFactory kf = KeyFactory.getInstance("RSA");
             return (RSAPublicKey) kf.generatePublic(spec);
-        } catch (Exception e) {
+        } catch (IOException e) {
             System.out.println("Failed to get public key.");
+            return null;
         }
-        return null;
     }
 
-    public static String encryptRSA(String plainText, PublicKey publicKey) {
-        try {
-            Cipher encryptCipher = Cipher.getInstance("RSA");
-            encryptCipher.init(Cipher.ENCRYPT_MODE, publicKey);
+    public static String encryptRSA(String plainText, PublicKey publicKey) throws GeneralSecurityException {
+        Cipher encryptCipher = Cipher.getInstance("RSA");
+        encryptCipher.init(Cipher.ENCRYPT_MODE, publicKey);
 
-            byte[] cipherText = encryptCipher.doFinal(plainText.getBytes(StandardCharsets.UTF_8));
+        byte[] cipherText = encryptCipher.doFinal(plainText.getBytes(StandardCharsets.UTF_8));
 
-            return Base64.getEncoder().encodeToString(cipherText);
-        } catch (Exception e) {
-            System.out.println("Failed to encrypt message.");
-        }
-        return null;
+        return Base64.getEncoder().encodeToString(cipherText);
     }
 
     public static String sign(String plainText, PrivateKey privateKey) {
@@ -101,18 +95,13 @@ public class Crypto {
         return false;
     }
 
-    public static String decryptRSA(String cipherText, PrivateKey privateKey) {
-        try {
-            byte[] bytes = Base64.getDecoder().decode(cipherText);
+    public static String decryptRSA(String cipherText, PrivateKey privateKey) throws GeneralSecurityException {
+        byte[] bytes = Base64.getDecoder().decode(cipherText);
 
-            Cipher decriptCipher = Cipher.getInstance("RSA");
-            decriptCipher.init(Cipher.DECRYPT_MODE, privateKey);
+        Cipher decriptCipher = Cipher.getInstance("RSA");
+        decriptCipher.init(Cipher.DECRYPT_MODE, privateKey);
 
-            return new String(decriptCipher.doFinal(bytes), UTF_8);
-        } catch (Exception e) {
-            System.out.println("Failed to decrypt message.");
-        }
-        return null;
+        return new String(decriptCipher.doFinal(bytes), UTF_8);
     }
 
     public static String encryptAES(String value) {

@@ -11,6 +11,7 @@ import pt.tecnico.hdlt.T25.client.Services.ProximityServiceImpl;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
 import java.io.IOException;
+import java.security.GeneralSecurityException;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -29,7 +30,7 @@ public class Client extends AbstractClient {
     private Map<Integer, ProximityServiceGrpc.ProximityServiceStub> proximityServiceStubs;
     private Map<Integer, LocationReport> locationReports;
 
-    public Client(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxNearbyByzantineUsers, boolean isTest) throws IOException {
+    public Client(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxNearbyByzantineUsers, boolean isTest) throws IOException, GeneralSecurityException {
         super(serverHost, serverPort, clientId, systemInfo);
         this.maxNearbyByzantineUsers = maxNearbyByzantineUsers;
         this.locationReports = new HashMap<>();
@@ -77,7 +78,7 @@ public class Client extends AbstractClient {
         double longitude = location.getLongitude();
 
         return this.getSystemInfo().getGrid().stream()
-                .filter(location1 -> location1.getEp() == ep && location1.getUserId() != this.getClientId()&& isNearby(latitude, longitude, location1.getLatitude(), location1.getLongitude()))
+                .filter(location1 -> location1.getEp() == ep && location1.getUserId() != this.getClientId() && isNearby(latitude, longitude, location1.getLatitude(), location1.getLongitude()))
                 .map(Location::getUserId)
                 .collect(Collectors.toList());
     }
@@ -131,7 +132,7 @@ public class Client extends AbstractClient {
                 }
             };
 
-            this.requestLocationProof(locationProof, witnessId, finishLatch, requestObserver);
+            this.requestLocationProof(locationProof, witnessId, requestObserver);
         }
 
         finishLatch.await(1, TimeUnit.MINUTES);
@@ -147,7 +148,7 @@ public class Client extends AbstractClient {
         return false;
     }
 
-    void requestLocationProof(LocationProof locationProof, int witnessId, CountDownLatch finishLatch, Consumer<Proximity.LocationProofResponse> callback) {
+    void requestLocationProof(LocationProof locationProof, int witnessId, Consumer<Proximity.LocationProofResponse> callback) {
 
         String content = locationProof.toJsonString();
 
@@ -174,7 +175,7 @@ public class Client extends AbstractClient {
         System.out.println("Requested " + witnessId);
     }
 
-    public void submitLocationReport(int ep) throws InterruptedException {
+    public void submitLocationReport(int ep) throws InterruptedException, GeneralSecurityException {
         LocationReport locationReport = locationReports.get(ep);
         Location myLocation = this.getMyLocation(ep);
 
@@ -209,7 +210,7 @@ public class Client extends AbstractClient {
     }
 
     @Override
-    void parseCommand(String cmd) {
+    void parseCommand(String cmd) throws GeneralSecurityException, JsonProcessingException {
         String[] args = cmd.split(" ");
 
         if (args.length != 2) {
@@ -232,6 +233,8 @@ public class Client extends AbstractClient {
                 submitLocationReport(ep);
             } catch (InterruptedException ex) {
                 System.err.println("Caught Interrupted exception");
+            } catch (StatusRuntimeException ex2) {
+                System.err.println(ex2.getMessage());
             }
         }
 
@@ -239,8 +242,8 @@ public class Client extends AbstractClient {
             int ep = Integer.parseInt(args[1]);
             try {
                 obtainLocationReport(this.getClientId(), ep);
-            } catch (JsonProcessingException ex) {
-                System.err.println("Caught JSON Processing exception");
+            } catch (StatusRuntimeException ex2) {
+                System.err.println(ex2.getMessage());
             }
         }
 

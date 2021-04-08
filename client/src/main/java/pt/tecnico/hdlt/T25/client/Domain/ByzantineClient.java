@@ -2,10 +2,12 @@ package pt.tecnico.hdlt.T25.client.Domain;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.grpc.StatusRuntimeException;
 import pt.tecnico.hdlt.T25.Proximity;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
 import java.io.IOException;
+import java.security.GeneralSecurityException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,7 +29,7 @@ public class ByzantineClient extends Client {
 
     private Flavor flavor;
 
-    public ByzantineClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxNearbyByzantineUsers, Flavor flavor, boolean isTest) throws IOException {
+    public ByzantineClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxNearbyByzantineUsers, Flavor flavor, boolean isTest) throws IOException, GeneralSecurityException {
         super(serverHost, serverPort, clientId, systemInfo, maxNearbyByzantineUsers, isTest);
         this.flavor = flavor;
     }
@@ -62,7 +64,7 @@ public class ByzantineClient extends Client {
                 }
             };
 
-            this.requestLocationProof(locationProof, witnessId, finishLatch, requestObserver);
+            this.requestLocationProof(locationProof, witnessId, requestObserver);
         }
 
         finishLatch.await(20, TimeUnit.SECONDS);
@@ -202,7 +204,7 @@ public class ByzantineClient extends Client {
     }
 
     @Override
-    void parseCommand(String cmd) {
+    void parseCommand(String cmd) throws GeneralSecurityException, JsonProcessingException {
         String[] args = cmd.split(" ");
 
         if (args.length < 2) {
@@ -215,7 +217,7 @@ public class ByzantineClient extends Client {
             int longitude = Integer.parseInt(args[3]);
             try {
                 createLocationReport(ep, latitude, longitude);
-            } catch (Exception e) {
+            } catch (InterruptedException e) {
                 System.err.println("Caught Interrupted exception");
             }
         }
@@ -226,6 +228,8 @@ public class ByzantineClient extends Client {
                 submitLocationReport(ep);
             } catch (InterruptedException ex) {
                 System.err.println("Caught Interrupted exception");
+            } catch (StatusRuntimeException ex2) {
+                System.err.println(ex2.getMessage());
             }
         }
 
@@ -233,8 +237,8 @@ public class ByzantineClient extends Client {
             int ep = Integer.parseInt(args[1]);
             try {
                 obtainLocationReport(this.getClientId(), ep);
-            } catch (JsonProcessingException ex) {
-                System.err.println("Caught JSON Processing exception");
+            } catch (StatusRuntimeException ex2) {
+                System.err.println(ex2.getMessage());
             }
         }
 
