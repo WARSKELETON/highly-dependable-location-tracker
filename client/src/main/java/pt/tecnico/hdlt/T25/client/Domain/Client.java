@@ -28,17 +28,23 @@ public class Client extends AbstractClient {
     private static final int CLIENT_ORIGINAL_PORT = 8000;
 
     private final int maxNearbyByzantineUsers;
+    private final int maxByzantineUsers;
     private Map<Integer, ProximityServiceGrpc.ProximityServiceStub> proximityServiceStubs;
     private Map<Integer, LocationReport> locationReports;
 
-    public Client(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxNearbyByzantineUsers, boolean isTest) throws IOException, GeneralSecurityException {
+    public Client(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxByzantineUsers, int maxNearbyByzantineUsers, boolean isTest) throws IOException, GeneralSecurityException {
         super(serverHost, serverPort, clientId, systemInfo);
         this.maxNearbyByzantineUsers = maxNearbyByzantineUsers;
+        this.maxByzantineUsers = maxByzantineUsers;
         this.locationReports = new HashMap<>();
         this.proximityServiceStubs = new HashMap<>();
         this.connectToClients();
         this.setPrivateKey(getPriv("client" + clientId + "-priv.key"));
         if (!isTest) this.eventLoop();
+    }
+
+    public int getMaxByzantineUsers() {
+        return maxByzantineUsers;
     }
 
     public int getMaxNearbyByzantineUsers() {
@@ -110,7 +116,7 @@ public class Client extends AbstractClient {
 
         List<Integer> nearbyUsers = getNearbyUsers(location);
 
-        final CountDownLatch finishLatch = new CountDownLatch(this.maxNearbyByzantineUsers);
+        final CountDownLatch finishLatch = new CountDownLatch(this.maxByzantineUsers);
 
         System.out.println("Nearby users: " + nearbyUsers.size());
         for (int witnessId : nearbyUsers) {
@@ -122,6 +128,7 @@ public class Client extends AbstractClient {
                 @Override
                 public void accept(Proximity.LocationProofResponse response) {
                     if (finishLatch.getCount() == 0) return;
+
                     if (Crypto.verify(response.getContent(), response.getSignature(), getUserPublicKey(witnessId)) && verifyLocationProofResponse(locationProof, response.getContent())) {
                         locationProofsContent.put(witnessId, response.getContent());
                         locationProofsSignatures.put(witnessId, response.getSignature());

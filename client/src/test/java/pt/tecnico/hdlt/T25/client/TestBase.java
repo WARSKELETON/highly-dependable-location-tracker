@@ -6,17 +6,18 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import pt.tecnico.hdlt.T25.client.Domain.ByzantineClient;
 import pt.tecnico.hdlt.T25.client.Domain.Client;
+import pt.tecnico.hdlt.T25.client.Domain.HAClient;
 import pt.tecnico.hdlt.T25.client.Domain.SystemInfo;
 import pt.tecnico.hdlt.T25.server.Domain.Server;
 
 import java.io.IOException;
-import java.security.GeneralSecurityException;
 import java.util.*;
 
 public class TestBase {
     private static final String TEST_PROP_FILE = "/test.properties";
     private static final String TEST_GRID_FILE = "/grid.json";
 
+    static HAClient haClient;
     static List<Client> clients;
     static Server server;
     static List<ByzantineClient> byzantineClients;
@@ -39,17 +40,18 @@ public class TestBase {
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             systemInfo = objectMapper.readValue(TestBase.class.getResourceAsStream(TEST_GRID_FILE), SystemInfo.class);
-            Map<Integer, ByzantineClient.Flavor> byzantineFlavors = new HashMap<>();
-            byzantineFlavors.put(15, ByzantineClient.Flavor.SILENT);
-            byzantineFlavors.put(17, ByzantineClient.Flavor.SILENT);
+            List<Integer> byzantineIds = new ArrayList<>();
+            byzantineIds.add(15);
+            byzantineIds.add(17);
 
             final String serverHost = testProps.getProperty("server.host");
             final int serverPort = Integer.parseInt(testProps.getProperty("server.port"));
+            final int maxByzantineUsers = Integer.parseInt(testProps.getProperty("maxByzantineUsers"));
             final int maxNearbyByzantineUsers = Integer.parseInt(testProps.getProperty("maxNearbyByzantineUsers"));
 
             Thread task = new Thread(() -> {
                 try {
-                    server = new Server(serverPort, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxNearbyByzantineUsers);
+                    server = new Server(serverPort, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers);
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -61,11 +63,12 @@ public class TestBase {
 
             clients = new ArrayList<>();
             byzantineClients = new ArrayList<>();
+            haClient = new HAClient(serverHost, serverPort, -1, systemInfo, true);
             for (int i = 0; i < systemInfo.getNumberOfUsers(); i++) {
-                if (byzantineFlavors.containsKey(i)) {
-                    byzantineClients.add(new ByzantineClient(serverHost, serverPort, i, systemInfo, maxNearbyByzantineUsers, byzantineFlavors.get(i), true));
+                if (byzantineIds.contains(i)) {
+                    byzantineClients.add(new ByzantineClient(serverHost, serverPort, i, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, ByzantineClient.Flavor.SILENT, true));
                 } else {
-                    clients.add(new Client(serverHost, serverPort, i, systemInfo, maxNearbyByzantineUsers, true));
+                    clients.add(new Client(serverHost, serverPort, i, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, true));
                 }
             }
         }

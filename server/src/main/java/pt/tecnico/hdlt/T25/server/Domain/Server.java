@@ -33,16 +33,18 @@ public class Server {
     private int port;
     private int numberOfUsers;
     private int step;
+    private int maxByzantineUsers;
     private int maxNearbyByzantineUsers;
 
     private final PrivateKey privateKey;
     private Map<Integer, PublicKey> clientPublicKeys;
     private Map<Pair<Integer, Integer>, LocationReport> locationReports; // <UserId, Epoch> to Location Report
 
-    public Server(int port, int numberOfUsers, int step, int maxNearbyByzantineUsers) throws IOException, GeneralSecurityException {
+    public Server(int port, int numberOfUsers, int step, int maxByzantineUsers, int maxNearbyByzantineUsers) throws IOException, GeneralSecurityException {
         this.port = port;
         this.numberOfUsers = numberOfUsers;
         this.step = step;
+        this.maxByzantineUsers = maxByzantineUsers;
         this.maxNearbyByzantineUsers = maxNearbyByzantineUsers;
         this.locationReports = new HashMap<>();
         this.clientPublicKeys = new HashMap<>();
@@ -77,6 +79,7 @@ public class Server {
             port = objectNode.get("port").asInt();
             numberOfUsers = objectNode.get("numberOfUsers").asInt();
             step = objectNode.get("step").asInt();
+            maxByzantineUsers = objectNode.get("maxByzantineUsers").asInt();
             maxNearbyByzantineUsers = objectNode.get("maxNearbyByzantineUsers").asInt();
             JsonNode arrayNode = objectNode.get("locationReports");
 
@@ -159,7 +162,7 @@ public class Server {
             throw new InvalidSignatureException();
         }
 
-        if (witnessIds.size() >= maxNearbyByzantineUsers) {
+        if (witnessIds.size() >= maxByzantineUsers) {
             LocationReport locationReport = new LocationReport(locationProver, report.getLocationProver().getSignature(), locationProofsContent, locationProofsSignatures);
             locationReports.put(new Pair<>(locationProver.getUserId(), locationProver.getEp()), locationReport);
             this.saveCurrentServerState();
@@ -177,19 +180,18 @@ public class Server {
                 proof.getLongitude() == locationProver.getLongitude();
     }
 
-    public LocationServer.ObtainLocationReportResponse obtainLocationReport(LocationServer.ObtainLocationReportRequest report) throws JsonProcessingException, GeneralSecurityException, InvalidSignatureException, ReportNotFoundException {
+    public LocationServer.ObtainLocationReportResponse obtainLocationReport(LocationServer.ObtainLocationReportRequest request) throws JsonProcessingException, GeneralSecurityException, InvalidSignatureException, ReportNotFoundException {
         ObjectMapper objectMapper = new ObjectMapper();
-        String requestContent = Crypto.decryptRSA(report.getContent(), this.privateKey);
+        String requestContent = Crypto.decryptRSA(request.getContent(), this.privateKey);
         LocationReportRequest locationRequest = objectMapper.readValue(requestContent, LocationReportRequest.class);
 
-        if (!Crypto.verify(requestContent, report.getSignature(), this.getUserPublicKey(locationRequest.getSourceClientId()))) {
-            System.out.println("Some user tried to illegitimately request " + locationRequest.getUserId() + " location at epoch " + locationRequest.getEp());
-            throw new InvalidSignatureException();
-        }
-
         LocationReport locationReport = locationReports.get(new Pair<>(locationRequest.getUserId(), locationRequest.getEp()));
-        if (locationReport == null) {
-            throw new ReportNotFoundException(locationRequest.getUserId(), locationRequest.getEp());
+        if (locationReport == null) throw new ReportNotFoundException(locationRequest.getUserId(), locationRequest.getEp());
+        String locationReportContent = locationReport.getLocationProver().toJsonString() + locationReport.getLocationProofsContent().values().stream().reduce("", String::concat);
+
+        if ((!Crypto.verify(locationReportContent, locationReport.getLocationProverSignature(), this.getUserPublicKey(locationRequest.getSourceClientId())) && locationRequest.getSourceClientId() != -1) || !Crypto.verify(requestContent, request.getSignature(), this.getUserPublicKey(locationRequest.getSourceClientId()))) {
+            System.out.println("Some user tried to illegitimately request user" + locationRequest.getUserId() + " location at epoch " + locationRequest.getEp());
+            throw new InvalidSignatureException();
         }
 
         System.out.println("Obtaining location for " + locationRequest.getUserId() + " at epoch " + locationRequest.getEp());
@@ -233,7 +235,7 @@ public class Server {
         Location locationRequest = objectMapper.readValue(requestContent, Location.class);
 
         if (!Crypto.verify(requestContent, request.getSignature(), this.getUserPublicKey(-1))) {
-            System.out.println("Some user tried to illegitimately request " + locationRequest.getUserId() + " location at epoch " + locationRequest.getEp());
+            System.out.println("user" + locationRequest.getUserId() + " tried to illegitimately request users' location at epoch " + locationRequest.getEp() + " " + locationRequest.getLatitude() + ", " + locationRequest.getLongitude());
             throw new InvalidSignatureException();
         }
 
@@ -279,6 +281,7 @@ public class Server {
         node.put("port", port);
         node.put("numberOfUsers", numberOfUsers);
         node.put("step", step);
+        node.put("maxByzantineUsers", maxByzantineUsers);
         node.put("maxNearbyByzantineUsers", maxNearbyByzantineUsers);
         node.set("locationReports", arrayNode);
 
@@ -288,6 +291,7 @@ public class Server {
 
     public void cleanUp() {
         new File(SERVER_RECOVERY_FILE_PATH).delete();
+        new File(BACKUP_RECOVERY_FILE_PATH).delete();
 
         locationReports = new HashMap<>();
     }

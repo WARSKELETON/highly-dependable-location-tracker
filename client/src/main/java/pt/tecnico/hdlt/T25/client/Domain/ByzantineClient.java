@@ -3,6 +3,7 @@ package pt.tecnico.hdlt.T25.client.Domain;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.StatusRuntimeException;
+import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.Proximity;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
@@ -29,9 +30,33 @@ public class ByzantineClient extends Client {
 
     private Flavor flavor;
 
-    public ByzantineClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxNearbyByzantineUsers, Flavor flavor, boolean isTest) throws IOException, GeneralSecurityException {
-        super(serverHost, serverPort, clientId, systemInfo, maxNearbyByzantineUsers, isTest);
+    public ByzantineClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxByzantineUsers, int maxNearbyByzantineUsers, Flavor flavor, boolean isTest) throws IOException, GeneralSecurityException {
+        super(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, isTest);
         this.flavor = flavor;
+    }
+
+    public Flavor getFlavor() {
+        return flavor;
+    }
+
+    public void setFlavor(Flavor flavor) {
+        this.flavor = flavor;
+    }
+
+    public void obtainUsersAtLocation(int latitude, int longitude, int ep) throws JsonProcessingException, GeneralSecurityException {
+        Location usersLocationRequest = new Location(-1, ep, latitude, longitude);
+        String requestContent = usersLocationRequest.toJsonString();
+
+        LocationServer.ObtainUsersAtLocationRequest request = LocationServer.ObtainUsersAtLocationRequest.newBuilder()
+                .setContent(Crypto.encryptRSA(requestContent, this.getServerPublicKey()))
+                .setSignature(Crypto.sign(requestContent, this.getPrivateKey()))
+                .build();
+
+        List<LocationServer.ObtainLocationReportResponse> reports = this.getLocationServerServiceStub().obtainUsersAtLocation(request).getLocationReportsList();
+
+        for (LocationServer.ObtainLocationReportResponse report : reports) {
+            verifyLocationReport(report);
+        }
     }
 
     @Override
@@ -40,12 +65,10 @@ public class ByzantineClient extends Client {
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
         Location location = new Location(this.getClientId(), ep, latitude, longitude);
 
-        List<Integer> nearbyUsers = getNearbyUsers(getMyLocation(ep));
+        final CountDownLatch finishLatch = new CountDownLatch(this.getMaxByzantineUsers());
 
-        final CountDownLatch finishLatch = new CountDownLatch(this.getMaxNearbyByzantineUsers());
-
-        System.out.println("Nearby users: " + nearbyUsers.size());
-        for (int witnessId : nearbyUsers) {
+        System.out.println("Byzantine user" + getClientId() + ": broadcasting location proof request!");
+        for (int witnessId : getProximityServiceStubs().keySet()) {
             System.out.println(String.format("Sending Location Proof Request to %s...", witnessId));
 
             LocationProof locationProof = new LocationProof(location.getUserId(), location.getEp(), location.getLatitude(), location.getLongitude(), witnessId);
@@ -53,14 +76,10 @@ public class ByzantineClient extends Client {
             Consumer<Proximity.LocationProofResponse> requestObserver = new Consumer<>() {
                 @Override
                 public void accept(Proximity.LocationProofResponse response) {
-                    if (Crypto.verify(response.getContent(), response.getSignature(), getUserPublicKey(witnessId)) && verifyLocationProofResponse(locationProof, response.getContent())) {
-                        locationProofsContent.put(witnessId, response.getContent());
-                        locationProofsSignatures.put(witnessId, response.getSignature());
-                        System.out.println(String.format("Received legitimate proof from %s...", witnessId));
-                        finishLatch.countDown();
-                    } else {
-                        System.out.println(String.format("Received illegitimate proof from %s...", witnessId));
-                    }
+                    locationProofsContent.put(witnessId, response.getContent());
+                    locationProofsSignatures.put(witnessId, response.getSignature());
+                    System.out.println(String.format("Received proof from %s...", witnessId));
+                    finishLatch.countDown();
                 }
             };
 
@@ -74,6 +93,7 @@ public class ByzantineClient extends Client {
 
         // If necessary build own fake locations proof to complete quorum
         while (count > 0) {
+            System.out.println("Byzantine user" + getClientId() + ": building fake proof of my location complete report of " + getMaxByzantineUsers() + " proofs");
             LocationProof locationProof = new LocationProof(this.getClientId(), ep, latitude, longitude, this.getClientId());
             locationProofsContent.put(this.getClientId(), locationProof.toJsonString());
             locationProofsSignatures.put(this.getClientId(), Crypto.sign(locationProof.toJsonString(), this.getPrivateKey()));
@@ -185,7 +205,7 @@ public class ByzantineClient extends Client {
                 .build();
     }
 
-    // Byzantine user fucking with the signature
+    // Byzantine user alters proof's signature
     private Proximity.LocationProofResponse buildFalseLocationProofSignature(Proximity.LocationProofRequest request) throws JsonProcessingException {
 
         ObjectMapper objectMapper = new ObjectMapper();

@@ -49,7 +49,6 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 
 			responseObserver.onNext(response);
 			responseObserver.onCompleted();
-
 		} catch (ReportNotFoundException ex) {
 			responseObserver.onError(Status.NOT_FOUND.withDescription(ex.getMessage()).asRuntimeException());
 		} catch (InvalidSignatureException ex2) {
