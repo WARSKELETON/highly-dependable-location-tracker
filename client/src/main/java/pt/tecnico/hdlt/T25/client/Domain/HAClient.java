@@ -36,39 +36,22 @@ public class HAClient extends AbstractClient {
 
     @Override
     void parseCommand(String cmd) {
-
         String[] args = cmd.split(" ");
 
-        if (args[0].equals(OBTAIN_LOCATION_REPORT)) {
-            if (args.length != 3) {
-                return;
-            }
-
-            int userId = Integer.parseInt(args[1]);
-            int ep = Integer.parseInt(args[2]);
-            try {
+        try {
+            if (args[0].equals(OBTAIN_LOCATION_REPORT) && args.length == 3) {
+                int userId = Integer.parseInt(args[1]);
+                int ep = Integer.parseInt(args[2]);
                 this.obtainLocationReport(userId, ep);
-            } catch (JsonProcessingException ex) {
-                System.err.println("Caught JSON Processing exception");
-            }
-        }
-
-        else if (args[0].equals(OBTAIN_USERS_AT_LOCATION)) {
-            if (args.length != 4) {
-                return;
-            }
-
-            int latitude = Integer.parseInt(args[1]);
-            int longitude = Integer.parseInt(args[2]);
-            int ep = Integer.parseInt(args[3]);
-            try {
+            } else if (args[0].equals(OBTAIN_USERS_AT_LOCATION) && args.length == 4) {
+                int latitude = Integer.parseInt(args[1]);
+                int longitude = Integer.parseInt(args[2]);
+                int ep = Integer.parseInt(args[3]);
                 this.obtainUsersAtLocation(latitude, longitude, ep);
-            } catch (JsonProcessingException ex) {
-                System.err.println("Caught JSON Processing exception");
-            }
+            } else
+                System.out.println("Invalid operation or invalid number of arguments. Possible operations are obtainLocation and obtainUsers.");
+        } catch (JsonProcessingException ex) {
+            System.err.println("Caught JSON Processing exception");
         }
-
-        else
-            System.out.println("Type invalid. Possible types are car and person.");
     }
 }

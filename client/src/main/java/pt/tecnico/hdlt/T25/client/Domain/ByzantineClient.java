@@ -6,6 +6,7 @@ import pt.tecnico.hdlt.T25.Proximity;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
 import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -205,40 +206,26 @@ public class ByzantineClient extends Client {
     void parseCommand(String cmd) {
         String[] args = cmd.split(" ");
 
-        if (args.length < 2) {
-            return;
-        }
-
-        if (args[0].equals(LOCATION_PROOF_REQUEST)) {
-            int ep = Integer.parseInt(args[1]);
-            int latitude = Integer.parseInt(args[2]);
-            int longitude = Integer.parseInt(args[3]);
-            try {
+        try {
+            if (args[0].equals(LOCATION_PROOF_REQUEST) && args.length == 4) {
+                int ep = Integer.parseInt(args[1]);
+                int latitude = Integer.parseInt(args[2]);
+                int longitude = Integer.parseInt(args[3]);
                 createLocationReport(ep, latitude, longitude);
-            } catch (Exception e) {
-                System.err.println("Caught Interrupted exception");
-            }
-        }
-
-        else if (args[0].equals(SUBMIT_LOCATION_REPORT)) {
-            int ep = Integer.parseInt(args[1]);
-            try {
+            } else if (args[0].equals(SUBMIT_LOCATION_REPORT) && args.length == 2) {
+                int ep = Integer.parseInt(args[1]);
                 submitLocationReport(ep);
-            } catch (InterruptedException ex) {
-                System.err.println("Caught Interrupted exception");
-            }
-        }
-
-        else if (args[0].equals(OBTAIN_LOCATION_REPORT)) {
-            int ep = Integer.parseInt(args[1]);
-            try {
+            } else if (args[0].equals(OBTAIN_LOCATION_REPORT) && args.length == 2) {
+                int ep = Integer.parseInt(args[1]);
                 obtainLocationReport(this.getClientId(), ep);
-            } catch (JsonProcessingException ex) {
-                System.err.println("Caught JSON Processing exception");
-            }
+            } else
+                System.out.println("Invalid operation or invalid number of arguments. Possible operations are proof, submit and obtain.");
+        } catch (JsonProcessingException ex) {
+            System.err.println("Caught JSON Processing exception");
+        } catch (InterruptedException ex) {
+            System.err.println("Caught Interrupted exception");
+        } catch (NoSuchAlgorithmException ex) {
+            System.err.println("Caught No Such Algorithm exception");
         }
-
-        else
-            System.out.println("Type invalid. Possible types are car and person.");
     }
 }

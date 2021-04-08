@@ -19,17 +19,7 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 	@Override
 	public void submitLocationReport(LocationServer.SubmitLocationReportRequest request, StreamObserver<LocationServer.SubmitLocationReportResponse> responseObserver) {
 		try {
-			if (locationServer.verifyLocationReport(request)) {
-				System.out.println("Location report submitted with success.");
-			} else {
-				System.out.println("Location report illegitimate or already in the system.");
-			}
-
-			// TODO Change response
-			LocationServer.SubmitLocationReportResponse response = LocationServer.SubmitLocationReportResponse.newBuilder()
-					.setContent("content")
-					.setSignature("signature")
-					.build();
+			LocationServer.SubmitLocationReportResponse response = locationServer.verifyLocationReport(request);
 
 			responseObserver.onNext(response);
 			responseObserver.onCompleted();

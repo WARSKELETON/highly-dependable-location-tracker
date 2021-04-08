@@ -5,6 +5,7 @@ import pt.tecnico.hdlt.T25.server.Domain.Server;
 public class ServerApp {
 
 	public static String SERVER_RECOVERY_FILE_PATH = "resources/server_state.json";
+	public static String BACKUP_RECOVERY_FILE_PATH = "resources/backup_state.json";
 
 	public static void main(String[] args) throws Exception {
 		System.out.println(ServerApp.class.getSimpleName());

@@ -10,7 +10,9 @@ import pt.tecnico.hdlt.T25.ProximityServiceGrpc;
 import pt.tecnico.hdlt.T25.client.Services.ProximityServiceImpl;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
+import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -174,7 +176,7 @@ public class Client extends AbstractClient {
         System.out.println("Requested " + witnessId);
     }
 
-    public void submitLocationReport(int ep) throws InterruptedException {
+    public void submitLocationReport(int ep) throws InterruptedException, NoSuchAlgorithmException {
         LocationReport locationReport = locationReports.get(ep);
         Location myLocation = this.getMyLocation(ep);
 
@@ -184,68 +186,60 @@ public class Client extends AbstractClient {
         }
 
         List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
+        byte[] encodedKey = Crypto.generateSecretKey();
+        SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
 
         for (Integer witnessId : locationReport.getLocationProofsContent().keySet()) {
             locationProofMessages.add(
                     LocationServer.LocationMessage.newBuilder()
-                    .setContent(Crypto.encryptRSA(locationReport.getLocationProofsContent().get(witnessId), this.getServerPublicKey()))
-                    .setSignature(locationReport.getLocationProofsSignature().get(witnessId))
-                    .build()
+                            .setContent(Crypto.encryptAES(secretKeySpec, locationReport.getLocationProofsContent().get(witnessId)))
+                            .setSignature(locationReport.getLocationProofsSignature().get(witnessId))
+                            .build()
             );
         }
 
         String content = locationReport.getLocationProver().toJsonString();
 
         LocationServer.SubmitLocationReportRequest request = LocationServer.SubmitLocationReportRequest.newBuilder()
+                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey()))
                 .setLocationProver(
                         LocationServer.LocationMessage.newBuilder()
-                                .setContent(Crypto.encryptRSA(content, this.getServerPublicKey()))
+                                .setContent(Crypto.encryptAES(secretKeySpec, content))
                                 .setSignature(locationReport.getLocationProverSignature())
                                 .build())
                 .addAllLocationProofs(locationProofMessages)
                 .build();
 
         LocationServer.SubmitLocationReportResponse response = getLocationServerServiceStub().submitLocationReport(request);
+        String locationProverContent = Crypto.decryptRSA(response.getContent(), this.getPrivateKey());
+        if (Crypto.verify(locationProverContent, response.getSignature(), this.getServerPublicKey()))
+            System.out.println(locationProverContent);
     }
 
     @Override
     void parseCommand(String cmd) {
         String[] args = cmd.split(" ");
 
-        if (args.length != 2) {
-            return;
-        }
-
-        if (args[0].equals(LOCATION_PROOF_REQUEST)) {
-            int ep = Integer.parseInt(args[1]);
-            Location myLocation = getMyLocation(ep);
-            try {
+        try {
+            if (args[0].equals(LOCATION_PROOF_REQUEST) && args.length == 1) {
+                int ep = getSystemInfo().getCurrentEp();
+                Location myLocation = getMyLocation(ep);
                 createLocationReport(ep, myLocation.getLatitude(), myLocation.getLongitude());
-            } catch (InterruptedException ex) {
-                System.err.println("Caught Interrupted exception");
-            }
-        }
-
-        else if (args[0].equals(SUBMIT_LOCATION_REPORT)) {
-            int ep = Integer.parseInt(args[1]);
-            try {
+            } else if (args[0].equals(SUBMIT_LOCATION_REPORT) && args.length == 2) {
+                int ep = Integer.parseInt(args[1]);
                 submitLocationReport(ep);
-            } catch (InterruptedException ex) {
-                System.err.println("Caught Interrupted exception");
-            }
-        }
-
-        else if (args[0].equals(OBTAIN_LOCATION_REPORT)) {
-            int ep = Integer.parseInt(args[1]);
-            try {
+            } else if (args[0].equals(OBTAIN_LOCATION_REPORT) && args.length == 2) {
+                int ep = Integer.parseInt(args[1]);
                 obtainLocationReport(this.getClientId(), ep);
-            } catch (JsonProcessingException ex) {
-                System.err.println("Caught JSON Processing exception");
-            }
+            } else
+                System.out.println("Invalid operation or invalid number of arguments. Possible operations are proof, submit and obtain.");
+        } catch (JsonProcessingException ex) {
+            System.err.println("Caught JSON Processing exception");
+        } catch (InterruptedException ex) {
+            System.err.println("Caught Interrupted exception");
+        } catch (NoSuchAlgorithmException ex) {
+            System.err.println("Caught No Such Algorithm exception");
         }
-
-        else
-            System.out.println("Type invalid. Possible types are car and person.");
     }
 
     public Location getMyLocation(int ep) {
@@ -267,7 +261,8 @@ public class Client extends AbstractClient {
 
         System.out.println(String.format("Verifying request from %d...", userId));
 
-        Location myLocation = getMyLocation(epoch);
+        int currentEp = getSystemInfo().getCurrentEp();
+        Location myLocation = getMyLocation(currentEp);
 
         return this.getSystemInfo().getGrid().stream()
                 .filter(location -> location.getEp() == epoch &&

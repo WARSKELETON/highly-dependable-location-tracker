@@ -5,8 +5,9 @@ syntax = "proto3";
 package pt.tecnico.hdlt.T25;
 
 message SubmitLocationReportRequest {
-  LocationMessage locationProver = 1;
-  repeated LocationMessage locationProofs = 2;
+  string key = 1;
+  LocationMessage locationProver = 2;
+  repeated LocationMessage locationProofs = 3;
 }
 
 message SubmitLocationReportResponse {
@@ -15,14 +16,16 @@ message SubmitLocationReportResponse {
 }
 
 message ObtainLocationReportRequest {
-  string content = 1;
-  string signature = 2;
+  string key = 1;
+  string content = 2;
+  string signature = 3;
 }
 
 message ObtainLocationReportResponse {
-  LocationMessage locationProver = 1;
-  repeated LocationMessage locationProofs = 2;
-  string serverSignature = 3;
+  string key = 1;
+  LocationMessage locationProver = 2;
+  repeated LocationMessage locationProofs = 3;
+  string serverSignature = 4;
 }
 
 message ObtainUsersAtLocationRequest {

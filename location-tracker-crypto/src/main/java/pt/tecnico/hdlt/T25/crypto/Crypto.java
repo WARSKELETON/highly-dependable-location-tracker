@@ -1,6 +1,7 @@
 package pt.tecnico.hdlt.T25.crypto;
 
 import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.File;
@@ -130,6 +131,19 @@ public class Crypto {
         return null;
     }
 
+    public static String encryptAES(SecretKeySpec secretKeySpec, String value) {
+        try {
+            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5PADDING");
+            cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec, new IvParameterSpec(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }));
+
+            byte[] encrypted = cipher.doFinal(value.getBytes());
+            return Base64.getEncoder().encodeToString(encrypted);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+        return null;
+    }
+
     public static SecretKeySpec getAESKey(String keyPath) throws GeneralSecurityException, IOException {
         File file = new File("resources/keys/" + keyPath);
         String absolutePath = file.getAbsolutePath();
@@ -156,5 +170,33 @@ public class Crypto {
         }
 
         return null;
+    }
+
+    public static String decryptAES(SecretKeySpec secretKeySpec, String encrypted) {
+        try {
+            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5PADDING");
+            cipher.init(Cipher.DECRYPT_MODE, secretKeySpec, new IvParameterSpec(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }));
+
+            byte[] original = cipher.doFinal(Base64.getDecoder().decode(encrypted));
+
+            return new String(original);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+
+        return null;
+    }
+
+    public static SecretKeySpec decryptKeyWithRSA(String key, PrivateKey privateKey) {
+        String keyContent = Crypto.decryptRSA(key, privateKey);
+        if (keyContent == null) return null;
+        byte[] decodedKey = Base64.getDecoder().decode(keyContent);
+        return new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
+    }
+
+    public static byte[] generateSecretKey() throws NoSuchAlgorithmException {
+        KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
+        keyGenerator.init(256);
+        return keyGenerator.generateKey().getEncoded();
     }
 }
