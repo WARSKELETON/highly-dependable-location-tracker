@@ -162,7 +162,7 @@ public class Server {
             throw new InvalidSignatureException();
         }
 
-        if (witnessIds.size() >= maxNearbyByzantineUsers) {
+        if (witnessIds.size() >= maxByzantineUsers) {
             LocationReport locationReport = new LocationReport(locationProver, report.getLocationProver().getSignature(), locationProofsContent, locationProofsSignatures);
             locationReports.put(new Pair<>(locationProver.getUserId(), locationProver.getEp()), locationReport);
             this.saveCurrentServerState();
