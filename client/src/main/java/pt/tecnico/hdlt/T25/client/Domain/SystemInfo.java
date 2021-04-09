@@ -1,14 +1,14 @@
 package pt.tecnico.hdlt.T25.client.Domain;
 
 import java.util.List;
+import java.util.Optional;
 
 public class SystemInfo {
     private List<Location> grid;
     private int numberOfUsers;
     private int step;
     private int maxEp;
-
-    private final int durationEp = 12000;
+    private int durationEp = Integer.MAX_VALUE;
     private int currentEp;
 
     public SystemInfo() {
@@ -56,6 +56,14 @@ public class SystemInfo {
 
     public int getDurationEp() {
         return durationEp;
+    }
+
+    public void setAutomaticTransitions(boolean automatic, Optional<Integer> durationEp) {
+        if (!automatic) {
+            this.durationEp = Integer.MAX_VALUE;
+        } else {
+            durationEp.ifPresent(integer -> this.durationEp = integer);
+        }
     }
 
     public int getCurrentEp() {

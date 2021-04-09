@@ -282,10 +282,9 @@ public class Client extends AbstractClient {
         int longitude = locationProof.getLongitude();
         int witness = locationProof.getWitnessId();
 
-        System.out.println(String.format("Verifying request from %d...", userId));
+        System.out.println(String.format("Verifying location proof request from user%d...", userId));
 
-        int currentEp = getSystemInfo().getCurrentEp();
-        Location myLocation = getMyLocation(currentEp);
+        Location myLocation = getMyLocation(epoch);
 
         return this.getSystemInfo().getGrid().stream()
                 .filter(location -> location.getEp() == epoch &&
@@ -310,5 +309,10 @@ public class Client extends AbstractClient {
                 .setContent(content)
                 .setSignature(Crypto.sign(content, this.getPrivateKey()))
                 .build();
+    }
+
+    public void cleanup() {
+        locationReports.clear();
+        getSystemInfo().setAutomaticTransitions(false, Optional.empty());
     }
 }

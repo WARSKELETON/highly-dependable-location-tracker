@@ -170,7 +170,7 @@ public class Server {
             return buildSubmitLocationReportResponse(true, locationProver.getUserId());
         }
         System.out.println("Failed to submit report! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
-        throw new InvalidNumberOfProofsException(witnessIds.size(), maxNearbyByzantineUsers);
+        throw new InvalidNumberOfProofsException(witnessIds.size(), maxByzantineUsers);
     }
 
     private boolean verifyLocationProof(LocationProof proof, Location locationProver) {

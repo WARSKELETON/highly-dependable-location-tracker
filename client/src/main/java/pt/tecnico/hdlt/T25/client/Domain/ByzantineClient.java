@@ -7,12 +7,10 @@ import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.Proximity;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
+import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -47,8 +45,12 @@ public class ByzantineClient extends Client {
         Location usersLocationRequest = new Location(-1, ep, latitude, longitude);
         String requestContent = usersLocationRequest.toJsonString();
 
+        byte[] encodedKey = Crypto.generateSecretKey();
+        SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
+
         LocationServer.ObtainUsersAtLocationRequest request = LocationServer.ObtainUsersAtLocationRequest.newBuilder()
-                .setContent(Crypto.encryptRSA(requestContent, this.getServerPublicKey()))
+                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey()))
+                .setContent(Crypto.encryptAES(secretKeySpec, requestContent))
                 .setSignature(Crypto.sign(requestContent, this.getPrivateKey()))
                 .build();
 
