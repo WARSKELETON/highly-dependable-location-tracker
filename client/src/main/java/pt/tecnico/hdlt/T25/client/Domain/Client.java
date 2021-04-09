@@ -106,13 +106,10 @@ public class Client extends AbstractClient {
         return false;
     }
 
-    boolean createLocationReport(int ep, int latitude, int longitude) throws InterruptedException {
+    boolean createLocationReport(int clientId, int ep, int latitude, int longitude) throws InterruptedException {
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
-        Location location = this.getSystemInfo().getGrid().stream()
-                .filter(location1 -> location1.getEp() == ep && location1.getUserId() == this.getClientId())
-                .collect(Collectors.toList())
-                .get(0);
+        Location location = getMyLocation(ep);
 
         List<Integer> nearbyUsers = getNearbyUsers(location);
 
@@ -127,15 +124,17 @@ public class Client extends AbstractClient {
             Consumer<Proximity.LocationProofResponse> requestObserver = new Consumer<>() {
                 @Override
                 public void accept(Proximity.LocationProofResponse response) {
-                    if (finishLatch.getCount() == 0) return;
+                    synchronized (finishLatch) {
+                        if (finishLatch.getCount() == 0) return;
 
-                    if (Crypto.verify(response.getContent(), response.getSignature(), getUserPublicKey(witnessId)) && verifyLocationProofResponse(locationProof, response.getContent())) {
-                        locationProofsContent.put(witnessId, response.getContent());
-                        locationProofsSignatures.put(witnessId, response.getSignature());
-                        System.out.println(String.format("Received legitimate proof from %s...", witnessId));
-                        finishLatch.countDown();
-                    } else {
-                        System.out.println(String.format("Received illegitimate proof from %s...", witnessId));
+                        if (Crypto.verify(response.getContent(), response.getSignature(), getUserPublicKey(witnessId)) && verifyLocationProofResponse(locationProof, response.getContent())) {
+                            locationProofsContent.put(witnessId, response.getContent());
+                            locationProofsSignatures.put(witnessId, response.getSignature());
+                            System.out.println(String.format("Received legitimate proof from %s...", witnessId));
+                            finishLatch.countDown();
+                        } else {
+                            System.out.println(String.format("Received illegitimate proof from %s...", witnessId));
+                        }
                     }
                 }
             };
@@ -188,7 +187,7 @@ public class Client extends AbstractClient {
         Location myLocation = this.getMyLocation(ep);
 
         if (locationReport == null) {
-            if (!createLocationReport(ep, myLocation.getLatitude(), myLocation.getLongitude())) return;
+            if (!createLocationReport(getClientId(), ep, myLocation.getLatitude(), myLocation.getLongitude())) return;
             locationReport = locationReports.get(ep);
         }
 
@@ -239,7 +238,7 @@ public class Client extends AbstractClient {
                     int ep = Integer.parseInt(args[1]);
                     int latitude = Integer.parseInt(args[2]);
                     int longitude = Integer.parseInt(args[3]);
-                    createLocationReport(ep, latitude, longitude);
+                    createLocationReport(getClientId(), ep, latitude, longitude);
                     break;
                 }
                 case SUBMIT_LOCATION_REPORT: {

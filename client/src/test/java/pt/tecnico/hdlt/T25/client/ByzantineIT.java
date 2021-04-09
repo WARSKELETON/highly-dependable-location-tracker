@@ -70,7 +70,7 @@ public class ByzantineIT extends TestBase {
     }
 
     @Test
-    public void AutomaticCorrectReportWithSufficientNeighbors() throws GeneralSecurityException, InterruptedException, JsonProcessingException {
+    public void AutomaticCorrectReportWithReplayAndSufficientNeighbors() throws GeneralSecurityException, InterruptedException, JsonProcessingException {
         Map<Client, Integer> testClients = new HashMap<>();
         for (int ep = 0; ep < systemInfo.getMaxEp(); ep++) {
             Client testClient = null;
@@ -113,7 +113,35 @@ public class ByzantineIT extends TestBase {
     }
 
     @Test
-    public void ByzantineBuildsFakeReport() throws InterruptedException{
+    public void AutomaticCorrectReportAllClientsWithSufficientNeighbors() throws GeneralSecurityException, InterruptedException, JsonProcessingException {
+        for (int ep = 0; ep < systemInfo.getMaxEp(); ep++) {
+            for (Client client : clients) {
+                if (client.getNearbyUsers(client.getMyLocation(ep)).size() >= client.getMaxByzantineUsers() + client.getMaxNearbyByzantineUsers()) {
+                    System.out.println();
+                    System.out.println("user" + client.getClientId() + " building a correct report at epoch " + ep);
+                    Location originalLocation = client.getMyLocation(ep);
+
+                    client.submitLocationReport(ep);
+
+                    Location locationResponse = client.obtainLocationReport(client.getClientId(), ep);
+                    Assertions.assertEquals(originalLocation.getUserId(), locationResponse.getUserId());
+                    Assertions.assertEquals(originalLocation.getEp(), locationResponse.getEp());
+                    Assertions.assertEquals(originalLocation.getLatitude(), locationResponse.getLatitude());
+                    Assertions.assertEquals(originalLocation.getLongitude(), locationResponse.getLongitude());
+                    System.out.println();
+                    System.out.println("HAClient obtains report.");
+                    Location locationResponse1 = haClient.obtainLocationReport(client.getClientId(), ep);
+                    Assertions.assertEquals(originalLocation.getUserId(), locationResponse1.getUserId());
+                    Assertions.assertEquals(originalLocation.getEp(), locationResponse1.getEp());
+                    Assertions.assertEquals(originalLocation.getLatitude(), locationResponse1.getLatitude());
+                    Assertions.assertEquals(originalLocation.getLongitude(), locationResponse1.getLongitude());
+                }
+            }
+        }
+    }
+
+    @Test
+    public void ByzantineBuildsFakeReport() throws InterruptedException {
         ByzantineClient byzantineClient = byzantineClients.get(new Random().nextInt(byzantineClients.size()));
         for (ByzantineClient bc : byzantineClients) {
             if (bc.getClientId() == byzantineClient.getClientId()) continue;
@@ -129,10 +157,34 @@ public class ByzantineIT extends TestBase {
         spoofedLocation.setLongitude(systemInfo.getGrid().get(gridIndex).getLongitude());
         System.out.println("byzantineUser" + byzantineClient.getClientId() + " building a fake report for spoofed location: " + spoofedLocation.getLatitude() + ", " + spoofedLocation.getLongitude());
 
-        byzantineClient.createLocationReport(0, spoofedLocation.getLatitude(), spoofedLocation.getLongitude());
+        byzantineClient.createLocationReport(byzantineClient.getClientId(), 0, spoofedLocation.getLatitude(), spoofedLocation.getLongitude());
 
         Assertions.assertEquals(Status.Code.INVALID_ARGUMENT,
                 assertThrows(StatusRuntimeException.class, () -> byzantineClient.submitLocationReport(0)).getStatus().getCode());
+    }
+
+    @Test
+    public void ByzantineBuildsReportOnBehalfOfAllPossibleUsers() throws InterruptedException {
+        ByzantineClient byzantineClient = byzantineClients.get(new Random().nextInt(byzantineClients.size()));
+        // Setting all byzantines as conspirators to allow collaboration
+        for (ByzantineClient bc : byzantineClients) {
+            if (bc.getClientId() == byzantineClient.getClientId()) continue;
+
+            bc.setFlavor(ByzantineClient.Flavor.CONSPIRATOR);
+        }
+
+        assert byzantineClient != null;
+
+        for (Client victimClient : clients) {
+            if (victimClient.getNearbyUsers(victimClient.getMyLocation(0)).size() >= victimClient.getMaxByzantineUsers() + victimClient.getMaxNearbyByzantineUsers()) {
+                Location victimLocation = victimClient.getMyLocation(0);
+                System.out.println("byzantineUser" + byzantineClient.getClientId() + " building a fake report as " + victimClient.getClientId() + " with location: " + victimLocation.getLatitude() + ", " + victimLocation.getLongitude());
+                byzantineClient.createLocationReport(victimClient.getClientId(), 0, victimLocation.getLatitude(), victimLocation.getLongitude());
+
+                Assertions.assertEquals(Status.Code.UNAUTHENTICATED,
+                        assertThrows(StatusRuntimeException.class, () -> byzantineClient.submitLocationReport(0)).getStatus().getCode());
+            }
+        }
     }
 
     @Test
@@ -141,17 +193,24 @@ public class ByzantineIT extends TestBase {
         List<Integer> byzantineIds = byzantineClients.stream().map(ByzantineClient::getClientId).collect(Collectors.toList());
         ByzantineClient testByzantineClient = null;
         for (ByzantineClient byzantineClient : byzantineClients) {
+            // Getting the legitimate clients nearby byzantines
             List<Integer> nearbyClientIds = byzantineClient.getNearbyUsers(byzantineClient.getMyLocation(0))
                     .stream()
                     .filter(clientId -> !byzantineIds.contains(clientId))
                     .collect(Collectors.toList());
 
-            if (nearbyClientIds.size() >= byzantineClient.getMaxByzantineUsers() + byzantineClient.getMaxNearbyByzantineUsers()) {
-                testClient = clients.get(nearbyClientIds.get(new Random().nextInt(nearbyClientIds.size())));
-                byzantineClient.setFlavor(ByzantineClient.Flavor.IMPERSONATE);
-                testByzantineClient = byzantineClient;
-                break;
+            // Obtaining a correct neighbour client with sufficient neighbours
+            for (int clientId : nearbyClientIds) {
+                Client tmpClient = clients.get(clientId);
+                if (tmpClient.getNearbyUsers(tmpClient.getMyLocation(0)).size() >= byzantineClient.getMaxByzantineUsers() + byzantineClient.getMaxNearbyByzantineUsers()) {
+                    testClient = tmpClient;
+                    byzantineClient.setFlavor(ByzantineClient.Flavor.IMPERSONATE);
+                    testByzantineClient = byzantineClient;
+                    break;
+                }
             }
+
+            if (testClient != null) break;
         }
 
         assert testClient != null;

@@ -62,10 +62,10 @@ public class ByzantineClient extends Client {
     }
 
     @Override
-    public boolean createLocationReport(int ep, int latitude, int longitude) throws InterruptedException {
+    public boolean createLocationReport(int clientId, int ep, int latitude, int longitude) throws InterruptedException {
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
-        Location location = new Location(this.getClientId(), ep, latitude, longitude);
+        Location location = new Location(clientId, ep, latitude, longitude);
 
         final CountDownLatch finishLatch = new CountDownLatch(this.getMaxByzantineUsers());
 
@@ -95,10 +95,11 @@ public class ByzantineClient extends Client {
 
         // If necessary build own fake locations proof to complete quorum
         while (count > 0) {
+            int victimClientId = new Random().nextInt(getSystemInfo().getNumberOfUsers());
             System.out.println("Byzantine user" + getClientId() + ": building fake proof of my location complete report of " + getMaxByzantineUsers() + " proofs");
-            LocationProof locationProof = new LocationProof(this.getClientId(), ep, latitude, longitude, this.getClientId());
-            locationProofsContent.put(this.getClientId(), locationProof.toJsonString());
-            locationProofsSignatures.put(this.getClientId(), Crypto.sign(locationProof.toJsonString(), this.getPrivateKey()));
+            LocationProof locationProof = new LocationProof(clientId, ep, latitude, longitude, victimClientId);
+            locationProofsContent.put(victimClientId, locationProof.toJsonString());
+            locationProofsSignatures.put(victimClientId, Crypto.sign(locationProof.toJsonString(), this.getPrivateKey()));
 
             count--;
         }
@@ -239,7 +240,7 @@ public class ByzantineClient extends Client {
                     int ep = Integer.parseInt(args[1]);
                     int latitude = Integer.parseInt(args[2]);
                     int longitude = Integer.parseInt(args[3]);
-                    createLocationReport(ep, latitude, longitude);
+                    createLocationReport(getClientId(), ep, latitude, longitude);
                     break;
                 }
                 case SUBMIT_LOCATION_REPORT: {
