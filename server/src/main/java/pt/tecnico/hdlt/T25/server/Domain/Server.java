@@ -182,7 +182,9 @@ public class Server {
 
     public LocationServer.ObtainLocationReportResponse obtainLocationReport(LocationServer.ObtainLocationReportRequest request) throws JsonProcessingException, GeneralSecurityException, InvalidSignatureException, ReportNotFoundException {
         ObjectMapper objectMapper = new ObjectMapper();
-        String requestContent = Crypto.decryptRSA(request.getContent(), this.privateKey);
+
+        SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(request.getKey(), this.privateKey);
+        String requestContent = Crypto.decryptAES(secretKeySpec, request.getContent());
         LocationReportRequest locationRequest = objectMapper.readValue(requestContent, LocationReportRequest.class);
 
         LocationReport locationReport = locationReports.get(new Pair<>(locationRequest.getUserId(), locationRequest.getEp()));
@@ -229,9 +231,10 @@ public class Server {
     }
 
     public LocationServer.ObtainUsersAtLocationResponse obtainUsersAtLocation(LocationServer.ObtainUsersAtLocationRequest request) throws JsonProcessingException, GeneralSecurityException, InvalidSignatureException {
-
         ObjectMapper objectMapper = new ObjectMapper();
-        String requestContent = Crypto.decryptRSA(request.getContent(), this.privateKey);
+
+        SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(request.getKey(), this.privateKey);
+        String requestContent = Crypto.decryptAES(secretKeySpec, request.getContent());
         Location locationRequest = objectMapper.readValue(requestContent, Location.class);
 
         if (!Crypto.verify(requestContent, request.getSignature(), this.getUserPublicKey(-1))) {
