@@ -16,6 +16,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+import static io.grpc.Status.DEADLINE_EXCEEDED;
+
 public class ByzantineClient extends Client {
 
     public enum Flavor {
@@ -54,7 +56,18 @@ public class ByzantineClient extends Client {
                 .setSignature(Crypto.sign(requestContent, this.getPrivateKey()))
                 .build();
 
-        List<LocationServer.ObtainLocationReportResponse> reports = this.getLocationServerServiceStub().obtainUsersAtLocation(request).getLocationReportsList();
+        List<LocationServer.ObtainLocationReportResponse> reports;
+        try {
+            reports = this.getLocationServerServiceStub().withDeadlineAfter(1, TimeUnit.SECONDS).obtainUsersAtLocation(request).getLocationReportsList();
+        } catch (StatusRuntimeException e) {
+            if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
+                System.out.println("TIMEOUT CLIENT");
+                obtainUsersAtLocation(latitude, longitude, ep);
+                return;
+            } else {
+                throw e;
+            }
+        }
 
         for (LocationServer.ObtainLocationReportResponse report : reports) {
             verifyLocationReport(report);
@@ -88,7 +101,7 @@ public class ByzantineClient extends Client {
             this.requestLocationProof(locationProof, witnessId, requestObserver);
         }
 
-        finishLatch.await(20, TimeUnit.SECONDS);
+        finishLatch.await(10, TimeUnit.SECONDS);
 
         long count = finishLatch.getCount();
         System.out.println("Count " + count);

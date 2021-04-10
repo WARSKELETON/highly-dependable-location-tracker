@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+import static io.grpc.Status.DEADLINE_EXCEEDED;
 import static pt.tecnico.hdlt.T25.crypto.Crypto.getPriv;
 
 public class Client extends AbstractClient {
@@ -142,7 +143,7 @@ public class Client extends AbstractClient {
             this.requestLocationProof(locationProof, witnessId, requestObserver);
         }
 
-        finishLatch.await(1, TimeUnit.MINUTES);
+        finishLatch.await(10, TimeUnit.SECONDS);
 
         System.out.println("Count " + finishLatch.getCount());
 
@@ -151,7 +152,10 @@ public class Client extends AbstractClient {
             LocationReport locationReport = new LocationReport(location, Crypto.sign(signature, this.getPrivateKey()), locationProofsContent, locationProofsSignatures);
             locationReports.put(ep, locationReport);
             return true;
+        } else if (finishLatch.getCount() > 0 && nearbyUsers.size() >= maxByzantineUsers + maxNearbyByzantineUsers) {
+            return createLocationReport(clientId, ep, latitude, longitude);
         }
+
         return false;
     }
 
@@ -164,20 +168,30 @@ public class Client extends AbstractClient {
                 .setSignature(Crypto.sign(content, this.getPrivateKey()))
                 .build();
 
-        proximityServiceStubs.get(witnessId).requestLocationProof(request, new StreamObserver<>() {
-            @Override
-            public void onNext(Proximity.LocationProofResponse response) {
-                callback.accept(response);
-            }
+        try {
+            proximityServiceStubs.get(witnessId).withDeadlineAfter(1, TimeUnit.SECONDS).requestLocationProof(request, new StreamObserver<>() {
+                @Override
+                public void onNext(Proximity.LocationProofResponse response) {
+                    callback.accept(response);
+                }
 
-            @Override
-            public void onError(Throwable t) {
-            }
+                @Override
+                public void onError(Throwable t) {
+                }
 
-            @Override
-            public void onCompleted() {
+                @Override
+                public void onCompleted() {
+                }
+            });
+        } catch (StatusRuntimeException e) {
+            if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
+                System.out.println("TIMEOUT CLIENT");
+                requestLocationProof(locationProof, witnessId, callback);
+                return;
+            } else {
+                throw e;
             }
-        });
+        }
 
         System.out.println("Requested " + witnessId);
     }
@@ -216,7 +230,18 @@ public class Client extends AbstractClient {
                 .addAllLocationProofs(locationProofMessages)
                 .build();
 
-        LocationServer.SubmitLocationReportResponse response = getLocationServerServiceStub().submitLocationReport(request);
+        LocationServer.SubmitLocationReportResponse response;
+        try {
+            response = getLocationServerServiceStub().withDeadlineAfter(1, TimeUnit.SECONDS).submitLocationReport(request);
+        } catch (StatusRuntimeException e) {
+            if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
+                System.out.println("TIMEOUT CLIENT");
+                submitLocationReport(ep);
+                return;
+            } else {
+                throw e;
+            }
+        }
 
         secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), this.getPrivateKey());
         String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getContent());

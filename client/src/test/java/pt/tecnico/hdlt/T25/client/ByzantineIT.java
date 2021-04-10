@@ -4,15 +4,20 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import org.junit.jupiter.api.*;
+import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.client.Domain.ByzantineClient;
 import pt.tecnico.hdlt.T25.client.Domain.Client;
 import pt.tecnico.hdlt.T25.client.Domain.Location;
+import pt.tecnico.hdlt.T25.crypto.Crypto;
 
+import javax.crypto.spec.SecretKeySpec;
 import java.security.GeneralSecurityException;
+import java.security.PrivateKey;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -67,6 +72,43 @@ public class ByzantineIT extends TestBase {
         Assertions.assertEquals(originalLocation.getEp(), locationResponse1.getEp());
         Assertions.assertEquals(originalLocation.getLatitude(), locationResponse1.getLatitude());
         Assertions.assertEquals(originalLocation.getLongitude(), locationResponse1.getLongitude());
+    }
+
+    @Test
+    public void ReplayObtainReportRequest() throws GeneralSecurityException, InterruptedException, JsonProcessingException {
+        Client manInTheMiddle = null;
+        Client testClient = null;
+        for (Client client : clients) {
+            if (client.getNearbyUsers(client.getMyLocation(0)).size() >= client.getMaxByzantineUsers() + client.getMaxNearbyByzantineUsers()) {
+                testClient = client;
+                break;
+            }
+        }
+
+        assert testClient != null;
+        System.out.println("user" + testClient.getClientId() + " building a correct report.");
+        Location originalLocation = testClient.getMyLocation(0);
+
+        testClient.submitLocationReport(0);
+        Location locationResponse = testClient.obtainLocationReport(testClient.getClientId(), 0);
+        Assertions.assertEquals(originalLocation.getUserId(), locationResponse.getUserId());
+        Assertions.assertEquals(originalLocation.getEp(), locationResponse.getEp());
+        Assertions.assertEquals(originalLocation.getLatitude(), locationResponse.getLatitude());
+        Assertions.assertEquals(originalLocation.getLongitude(), locationResponse.getLongitude());
+
+        System.out.println("Man in the middle tries to obtain same report.");
+        LocationServer.ObtainLocationReportRequest request = testClient.buildObtainLocationReportRequest(testClient.getClientId(), 0);
+        LocationServer.ObtainLocationReportResponse response = testClient.getLocationServerServiceStub().obtainLocationReport(request);
+
+        while (manInTheMiddle == null || manInTheMiddle.getClientId() == testClient.getClientId()) {
+            manInTheMiddle = clients.get(new Random().nextInt(clients.size()));
+        }
+
+        PrivateKey privateKey = manInTheMiddle.getPrivateKey();
+
+        if (response != null) {
+            assertThrows(GeneralSecurityException.class, () -> Crypto.decryptKeyWithRSA(response.getKey(), privateKey));
+        }
     }
 
     @Test

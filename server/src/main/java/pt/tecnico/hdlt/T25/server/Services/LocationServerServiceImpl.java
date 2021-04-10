@@ -1,6 +1,7 @@
 package pt.tecnico.hdlt.T25.server.Services;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import io.grpc.Context;
 import io.grpc.Status;
 import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.LocationServerServiceGrpc;
@@ -27,6 +28,11 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 	@Override
 	public void submitLocationReport(LocationServer.SubmitLocationReportRequest request, StreamObserver<LocationServer.SubmitLocationReportResponse> responseObserver) {
 		try {
+			if (Context.current().isCancelled()) {
+				System.out.println("TIMEOUT SERVER");
+				responseObserver.onError(Status.CANCELLED.asRuntimeException());
+				return;
+			}
 			LocationServer.SubmitLocationReportResponse response = locationServer.submitLocationReport(request);
 
 			responseObserver.onNext(response);
@@ -45,6 +51,11 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 	@Override
 	public void obtainLocationReport(LocationServer.ObtainLocationReportRequest request, StreamObserver<LocationServer.ObtainLocationReportResponse> responseObserver) {
 		try {
+            if (Context.current().isCancelled()) {
+                System.out.println("TIMEOUT SERVER");
+                responseObserver.onError(Status.CANCELLED.asRuntimeException());
+                return;
+            }
 			LocationServer.ObtainLocationReportResponse response = locationServer.obtainLocationReport(request);
 
 			responseObserver.onNext(response);
@@ -61,6 +72,11 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 	@Override
 	public void obtainUsersAtLocation(LocationServer.ObtainUsersAtLocationRequest request, StreamObserver<LocationServer.ObtainUsersAtLocationResponse> responseObserver) {
 		try {
+			if (Context.current().isCancelled()) {
+				System.out.println("TIMEOUT SERVER");
+				responseObserver.onError(Status.CANCELLED.asRuntimeException());
+				return;
+			}
 			LocationServer.ObtainUsersAtLocationResponse response = locationServer.obtainUsersAtLocation(request);
 
 			responseObserver.onNext(response);

@@ -19,6 +19,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import static io.grpc.Status.DEADLINE_EXCEEDED;
+
 abstract class AbstractClient {
     private String serverHost;
     private int serverPort;
@@ -65,7 +67,7 @@ abstract class AbstractClient {
         this.clientId = clientId;
     }
 
-    PrivateKey getPrivateKey() {
+    public PrivateKey getPrivateKey() {
         return privateKey;
     }
 
@@ -97,7 +99,7 @@ abstract class AbstractClient {
         this.systemInfo = systemInfo;
     }
 
-    LocationServerServiceGrpc.LocationServerServiceBlockingStub getLocationServerServiceStub() {
+    public LocationServerServiceGrpc.LocationServerServiceBlockingStub getLocationServerServiceStub() {
         return locationServerServiceStub;
     }
 
@@ -156,29 +158,43 @@ abstract class AbstractClient {
     }
 
     public Location obtainLocationReport(int userId, int ep) throws JsonProcessingException, GeneralSecurityException {
+
+        LocationServer.ObtainLocationReportRequest request = this.buildObtainLocationReportRequest(userId, ep);
+
+        LocationServer.ObtainLocationReportResponse response;
+        try {
+            response = locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).obtainLocationReport(request);
+        } catch (StatusRuntimeException e) {
+            if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
+                System.out.println("TIMEOUT CLIENT");
+                return obtainLocationReport(userId, ep);
+            } else {
+                throw e;
+            }
+        }
+
+        if (response != null && verifyLocationReport(response)) {
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), this.privateKey);
+            String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getLocationProver().getContent());
+            return objectMapper.readValue(locationProverContent, Location.class);
+        }
+        return null;
+    }
+
+    public LocationServer.ObtainLocationReportRequest buildObtainLocationReportRequest(int userId, int ep) throws GeneralSecurityException {
         LocationReportRequest locationRequest = new LocationReportRequest(userId, ep, 0, 0, this.clientId);
         String requestContent = locationRequest.toJsonString();
 
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
 
-        LocationServer.ObtainLocationReportRequest request = LocationServer.ObtainLocationReportRequest.newBuilder()
+        return LocationServer.ObtainLocationReportRequest.newBuilder()
                 .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.serverPublicKey))
                 .setContent(Crypto.encryptAES(secretKeySpec, requestContent))
                 .setSignature(Crypto.sign(requestContent, this.privateKey))
                 .build();
-
-
-        LocationServer.ObtainLocationReportResponse response = locationServerServiceStub.obtainLocationReport(request);
-
-        if (verifyLocationReport(response)) {
-            ObjectMapper objectMapper = new ObjectMapper();
-
-            secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), this.privateKey);
-            String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getLocationProver().getContent());
-            return objectMapper.readValue(locationProverContent, Location.class);
-        }
-        return null;
     }
 
     private void loadPublicKeys() throws GeneralSecurityException {

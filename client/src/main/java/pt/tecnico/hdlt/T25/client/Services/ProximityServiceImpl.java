@@ -1,5 +1,6 @@
 package pt.tecnico.hdlt.T25.client.Services;
 
+import io.grpc.Context;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import pt.tecnico.hdlt.T25.Proximity;
@@ -21,6 +22,12 @@ public class ProximityServiceImpl extends ProximityServiceGrpc.ProximityServiceI
     @Override
     public void requestLocationProof(Proximity.LocationProofRequest request, StreamObserver<Proximity.LocationProofResponse> responseObserver) {
         try {
+            if (Context.current().isCancelled()) {
+                System.out.println("TIMEOUT CLIENT");
+                responseObserver.onError(Status.CANCELLED.asRuntimeException());
+                return;
+            }
+
             if (client.verifyLocationProofRequest(request)) {
                 System.out.println("Verified.");
 

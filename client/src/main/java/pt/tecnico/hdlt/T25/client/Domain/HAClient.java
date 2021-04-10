@@ -9,7 +9,9 @@ import javax.crypto.spec.SecretKeySpec;
 import java.security.GeneralSecurityException;
 import java.util.Base64;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
+import static io.grpc.Status.DEADLINE_EXCEEDED;
 import static pt.tecnico.hdlt.T25.crypto.Crypto.getPriv;
 
 public class HAClient extends AbstractClient {
@@ -35,7 +37,18 @@ public class HAClient extends AbstractClient {
                 .setSignature(Crypto.sign(requestContent, this.getPrivateKey()))
                 .build();
 
-        List<LocationServer.ObtainLocationReportResponse> reports = this.getLocationServerServiceStub().obtainUsersAtLocation(request).getLocationReportsList();
+        List<LocationServer.ObtainLocationReportResponse> reports;
+        try {
+            reports = this.getLocationServerServiceStub().withDeadlineAfter(1, TimeUnit.SECONDS).obtainUsersAtLocation(request).getLocationReportsList();
+        } catch (StatusRuntimeException e) {
+            if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
+                System.out.println("TIMEOUT CLIENT");
+                obtainUsersAtLocation(latitude, longitude, ep);
+                return;
+            } else {
+                throw e;
+            }
+        }
 
         for (LocationServer.ObtainLocationReportResponse report : reports) {
             verifyLocationReport(report);
