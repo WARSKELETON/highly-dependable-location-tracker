@@ -35,4 +35,4 @@ mvn verify
 | -------|-------------------|--------------------------------------|---------------------------------------------|
 | 90704  | Andre Augusto     | <https://github.com/AndreAugusto11>  | <mailto:andre.augusto@tecnico.ulisboa.pt>   |
 | 90744  | Lucas Vicente     | <https://github.com/WARSKELETON>     | <mailto:lucasvicente@tecnico.ulisboa.pt>    |
-| 87678  | José Oliveira     | <https://github.com/zemfoliveira>    | <mailto:josedasilva@tecnico.ulisboa.pt>     |
+| 87678  | José Oliveira     | <https://github.com/zemfoliveira>    | <mailto:jose.f.oliveira@tecnico.ulisboa.pt> |
