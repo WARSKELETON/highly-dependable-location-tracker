@@ -17,11 +17,11 @@ There are three different clients: HAClient, ByzantineClient, Client (correct us
 
 To compile and run the Client (correct user):
 ```
-mvn compile exec:java
-```
-or 
-```
 mvn compile exec:java -Dexec.args="${serverHost} ${serverPort} ${clientId} ${maxByzantineUsers} ${maxNearbyByzantineUsers}"
+```
+or to run the default client
+```
+mvn compile exec:java
 ```
 
 To compile and run the HAClient:
