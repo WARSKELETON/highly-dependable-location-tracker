@@ -159,8 +159,12 @@ abstract class AbstractClient {
         LocationReportRequest locationRequest = new LocationReportRequest(userId, ep, 0, 0, this.clientId);
         String requestContent = locationRequest.toJsonString();
 
+        byte[] encodedKey = Crypto.generateSecretKey();
+        SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
+
         LocationServer.ObtainLocationReportRequest request = LocationServer.ObtainLocationReportRequest.newBuilder()
-                .setContent(Crypto.encryptRSA(requestContent, this.serverPublicKey))
+                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.serverPublicKey))
+                .setContent(Crypto.encryptAES(secretKeySpec, requestContent))
                 .setSignature(Crypto.sign(requestContent, this.privateKey))
                 .build();
 
@@ -170,7 +174,7 @@ abstract class AbstractClient {
         if (verifyLocationReport(response)) {
             ObjectMapper objectMapper = new ObjectMapper();
 
-            SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), this.privateKey);
+            secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), this.privateKey);
             String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getLocationProver().getContent());
             return objectMapper.readValue(locationProverContent, Location.class);
         }
