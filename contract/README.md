@@ -1,6 +1,6 @@
-# gRPC example contract
+# gRPC Contract
 
-This small library contains the protocol buffers (`protobuf`) of the Hello World gRPC application.
+This small library contains the protocol buffers (`protobuf`) of the Highly Dependable Location Tracker gRPC application.
 
 The interface is shared by the server, that implements it, and by the client, that needs it to make remote calls.
 
