@@ -10,19 +10,14 @@ import pt.tecnico.hdlt.T25.client.Domain.Client;
 import pt.tecnico.hdlt.T25.client.Domain.Location;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
-import javax.crypto.spec.SecretKeySpec;
 import java.security.GeneralSecurityException;
 import java.security.PrivateKey;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class ByzantineIT extends TestBase {
+public class SystemIT extends TestBase {
     // initialization and clean-up for each test
 
     @BeforeEach
@@ -33,11 +28,11 @@ public class ByzantineIT extends TestBase {
     public void tearDown() {
         server.cleanUp();
 
-        for (Client client : clients) {
+        for (Client client : clients.values()) {
             client.cleanup();
         }
 
-        for (ByzantineClient byzantineClient : byzantineClients) {
+        for (ByzantineClient byzantineClient : byzantineClients.values()) {
             byzantineClient.setFlavor(ByzantineClient.Flavor.SILENT);
             byzantineClient.cleanup();
         }
@@ -48,7 +43,7 @@ public class ByzantineIT extends TestBase {
     @Test
     public void CorrectReportWithSufficientNeighbors() throws GeneralSecurityException, InterruptedException, JsonProcessingException {
         Client testClient = null;
-        for (Client client : clients) {
+        for (Client client : clients.values()) {
             if (client.getNearbyUsers(client.getMyLocation(0)).size() >= client.getMaxByzantineUsers() + client.getMaxNearbyByzantineUsers()) {
                 testClient = client;
                 break;
@@ -78,7 +73,7 @@ public class ByzantineIT extends TestBase {
     public void ReplayObtainReportRequest() throws GeneralSecurityException, InterruptedException, JsonProcessingException {
         Client manInTheMiddle = null;
         Client testClient = null;
-        for (Client client : clients) {
+        for (Client client : clients.values()) {
             if (client.getNearbyUsers(client.getMyLocation(0)).size() >= client.getMaxByzantineUsers() + client.getMaxNearbyByzantineUsers()) {
                 testClient = client;
                 break;
@@ -96,14 +91,15 @@ public class ByzantineIT extends TestBase {
         Assertions.assertEquals(originalLocation.getLatitude(), locationResponse.getLatitude());
         Assertions.assertEquals(originalLocation.getLongitude(), locationResponse.getLongitude());
 
-        System.out.println("Man in the middle tries to obtain same report.");
+        System.out.println("Test client builds obtain location proof request.");
         LocationServer.ObtainLocationReportRequest request = testClient.buildObtainLocationReportRequest(testClient.getClientId(), 0);
-        LocationServer.ObtainLocationReportResponse response = testClient.getLocationServerServiceStub().obtainLocationReport(request);
 
         while (manInTheMiddle == null || manInTheMiddle.getClientId() == testClient.getClientId()) {
-            manInTheMiddle = clients.get(new Random().nextInt(clients.size()));
+            manInTheMiddle = clients.get(new ArrayList<>(clients.keySet()).get(new Random().nextInt(clients.keySet().size())));
         }
 
+        System.out.println("Man in the middle tries to obtain same report.");
+        LocationServer.ObtainLocationReportResponse response = manInTheMiddle.getLocationServerServiceStub().obtainLocationReport(request);
         PrivateKey privateKey = manInTheMiddle.getPrivateKey();
 
         if (response != null) {
@@ -116,7 +112,7 @@ public class ByzantineIT extends TestBase {
         Map<Client, Integer> testClients = new HashMap<>();
         for (int ep = 0; ep < systemInfo.getMaxEp(); ep++) {
             Client testClient = null;
-            for (Client client : clients) {
+            for (Client client : clients.values()) {
                 if (client.getNearbyUsers(client.getMyLocation(ep)).size() >= client.getMaxByzantineUsers() + client.getMaxNearbyByzantineUsers()) {
                     testClient = client;
                     testClients.put(client, ep);
@@ -157,7 +153,7 @@ public class ByzantineIT extends TestBase {
     @Test
     public void AutomaticCorrectReportAllClientsWithSufficientNeighbors() throws GeneralSecurityException, InterruptedException, JsonProcessingException {
         for (int ep = 0; ep < systemInfo.getMaxEp(); ep++) {
-            for (Client client : clients) {
+            for (Client client : clients.values()) {
                 if (client.getNearbyUsers(client.getMyLocation(ep)).size() >= client.getMaxByzantineUsers() + client.getMaxNearbyByzantineUsers()) {
                     System.out.println();
                     System.out.println("user" + client.getClientId() + " building a correct report at epoch " + ep);
@@ -184,8 +180,8 @@ public class ByzantineIT extends TestBase {
 
     @Test
     public void ByzantineBuildsFakeReport() throws InterruptedException {
-        ByzantineClient byzantineClient = byzantineClients.get(new Random().nextInt(byzantineClients.size()));
-        for (ByzantineClient bc : byzantineClients) {
+        ByzantineClient byzantineClient = byzantineClients.get(new ArrayList<>(byzantineClients.keySet()).get(new Random().nextInt(byzantineClients.keySet().size())));
+        for (ByzantineClient bc : byzantineClients.values()) {
             if (bc.getClientId() == byzantineClient.getClientId()) continue;
 
             bc.setFlavor(ByzantineClient.Flavor.CONSPIRATOR);
@@ -207,9 +203,9 @@ public class ByzantineIT extends TestBase {
 
     @Test
     public void ByzantineBuildsReportOnBehalfOfAllPossibleUsers() throws InterruptedException {
-        ByzantineClient byzantineClient = byzantineClients.get(new Random().nextInt(byzantineClients.size()));
+        ByzantineClient byzantineClient = byzantineClients.get(new ArrayList<>(byzantineClients.keySet()).get(new Random().nextInt(byzantineClients.keySet().size())));
         // Setting all byzantines as conspirators to allow collaboration
-        for (ByzantineClient bc : byzantineClients) {
+        for (ByzantineClient bc : byzantineClients.values()) {
             if (bc.getClientId() == byzantineClient.getClientId()) continue;
 
             bc.setFlavor(ByzantineClient.Flavor.CONSPIRATOR);
@@ -217,7 +213,7 @@ public class ByzantineIT extends TestBase {
 
         assert byzantineClient != null;
 
-        for (Client victimClient : clients) {
+        for (Client victimClient : clients.values()) {
             if (victimClient.getNearbyUsers(victimClient.getMyLocation(0)).size() >= victimClient.getMaxByzantineUsers() + victimClient.getMaxNearbyByzantineUsers()) {
                 Location victimLocation = victimClient.getMyLocation(0);
                 System.out.println("byzantineUser" + byzantineClient.getClientId() + " building a fake report as " + victimClient.getClientId() + " with location: " + victimLocation.getLatitude() + ", " + victimLocation.getLongitude());
@@ -232,9 +228,9 @@ public class ByzantineIT extends TestBase {
     @Test
     public void ByzantineCreatesProofOnBehalfOfCorrectUser() throws GeneralSecurityException, JsonProcessingException {
         Client testClient = null;
-        List<Integer> byzantineIds = byzantineClients.stream().map(ByzantineClient::getClientId).collect(Collectors.toList());
+        List<Integer> byzantineIds = byzantineClients.values().stream().map(ByzantineClient::getClientId).collect(Collectors.toList());
         ByzantineClient testByzantineClient = null;
-        for (ByzantineClient byzantineClient : byzantineClients) {
+        for (ByzantineClient byzantineClient : byzantineClients.values()) {
             // Getting the legitimate clients nearby byzantines
             List<Integer> nearbyClientIds = byzantineClient.getNearbyUsers(byzantineClient.getMyLocation(0))
                     .stream()
@@ -272,8 +268,8 @@ public class ByzantineIT extends TestBase {
     @Test
     public void ByzantineObtainsLocationFromOtherUser() throws GeneralSecurityException, InterruptedException {
         Client testClient = null;
-        ByzantineClient byzantineClient = byzantineClients.get(new Random().nextInt(byzantineClients.size()));
-        for (Client client : clients) {
+        ByzantineClient byzantineClient = byzantineClients.get(new ArrayList<>(byzantineClients.keySet()).get(new Random().nextInt(byzantineClients.keySet().size())));
+        for (Client client : clients.values()) {
             if (client.getNearbyUsers(client.getMyLocation(0)).size() >= client.getMaxByzantineUsers() + client.getMaxNearbyByzantineUsers()) {
                 testClient = client;
                 break;
@@ -294,8 +290,8 @@ public class ByzantineIT extends TestBase {
     @Test
     public void ByzantineObtainsUsersAtLocation() throws GeneralSecurityException, InterruptedException {
         Client testClient = null;
-        ByzantineClient byzantineClient = byzantineClients.get(new Random().nextInt(byzantineClients.size()));
-        for (Client client : clients) {
+        ByzantineClient byzantineClient = byzantineClients.get(new ArrayList<>(byzantineClients.keySet()).get(new Random().nextInt(byzantineClients.keySet().size())));
+        for (Client client : clients.values()) {
             if (client.getNearbyUsers(client.getMyLocation(0)).size() >= client.getMaxByzantineUsers() + client.getMaxNearbyByzantineUsers()) {
                 testClient = client;
                 break;
@@ -314,9 +310,9 @@ public class ByzantineIT extends TestBase {
     }
 
     @Test
-    public void ReplaySubmission() throws GeneralSecurityException, InterruptedException {
+    public void ReplaySubmissionReport() throws GeneralSecurityException, InterruptedException {
         Client testClient = null;
-        for (Client client : clients) {
+        for (Client client : clients.values()) {
             if (client.getNearbyUsers(client.getMyLocation(0)).size() >= client.getMaxByzantineUsers() + client.getMaxNearbyByzantineUsers()) {
                 testClient = client;
                 break;

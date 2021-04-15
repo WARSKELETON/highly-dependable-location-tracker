@@ -64,7 +64,7 @@ public class Server {
             }
         }
         catch (IOException|NullPointerException e) {
-            System.out.println("Failed to parse previous state.");
+            System.out.println("Server: Failed to parse previous state.");
         }
     }
 
@@ -93,7 +93,7 @@ public class Server {
                 locationReports.put(new Pair<>(userId, epoch), locationReport);
             }
         } catch (IOException e) {
-            System.out.println("Failed to parse previous state.");
+            System.out.println("Server: Failed to parse previous state.");
             System.out.println(e.getMessage());
         }
     }
@@ -105,7 +105,7 @@ public class Server {
 
         server.start();
 
-        System.out.println("Server started");
+        System.out.println("Server: Server started");
     }
 
     private PublicKey getUserPublicKey(int userId) {
@@ -135,7 +135,7 @@ public class Server {
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
 
-        System.out.println("Initiating verification of report with location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+        System.out.println("Server: Initiating verification of report with location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
 
         // Check each location proof in the report
         for (LocationServer.LocationMessage locationProof : report.getLocationProofsList()) {
@@ -150,15 +150,15 @@ public class Server {
             // Witness must be distinct, different from Prover, the location proof matches prover's location and the signature is correct & authentic (from the witness)
             if (!witnessIds.contains(witnessId) && witnessId != locationProver.getUserId() && this.verifyLocationProof(proof, locationProver) && Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(witnessId))) {
                 witnessIds.add(witnessId);
-                System.out.println("Obtained legitimate witness proof from Witness" + witnessId + " witnessed User" + proof.getUserId() + " at " + proof.getEp() + " " + proof.getLatitude() +  ", " + proof.getLongitude());
+                System.out.println("Server: Obtained legitimate witness proof from Witness" + witnessId + " witnessed User" + proof.getUserId() + " at " + proof.getEp() + " " + proof.getLatitude() +  ", " + proof.getLongitude());
             } else {
-                System.out.println("Obtained illegitimate witness proof from Witness" + proof.getWitnessId() + " where User" + proof.getUserId() + " would be at " + proof.getEp() + " " + proof.getLatitude() +  ", " + proof.getLongitude());
+                System.out.println("Server: Obtained illegitimate witness proof from Witness" + proof.getWitnessId() + " where User" + proof.getUserId() + " would be at " + proof.getEp() + " " + proof.getLatitude() +  ", " + proof.getLongitude());
             }
         }
 
         // Verify the whole report content
         if (!Crypto.verify(locationProverContent + locationProofsContent.values().stream().reduce("", String::concat), report.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId()))) {
-            System.out.println("Report failed integrity or authentication checks! User" + locationProver.getUserId() + " would be at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+            System.out.println("Server: Report failed integrity or authentication checks! User" + locationProver.getUserId() + " would be at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
             throw new InvalidSignatureException();
         }
 
@@ -166,10 +166,10 @@ public class Server {
             LocationReport locationReport = new LocationReport(locationProver, report.getLocationProver().getSignature(), locationProofsContent, locationProofsSignatures);
             locationReports.put(new Pair<>(locationProver.getUserId(), locationProver.getEp()), locationReport);
             this.saveCurrentServerState();
-            System.out.println("Report submitted with success! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+            System.out.println("Server: Report submitted with success! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
             return buildSubmitLocationReportResponse(true, locationProver.getUserId());
         }
-        System.out.println("Failed to submit report! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+        System.out.println("Server: Failed to submit report! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
         throw new InvalidNumberOfProofsException(witnessIds.size(), maxByzantineUsers);
     }
 
@@ -192,11 +192,11 @@ public class Server {
         String locationReportContent = locationReport.getLocationProver().toJsonString() + locationReport.getLocationProofsContent().values().stream().reduce("", String::concat);
 
         if ((!Crypto.verify(locationReportContent, locationReport.getLocationProverSignature(), this.getUserPublicKey(locationRequest.getSourceClientId())) && locationRequest.getSourceClientId() != -1) || !Crypto.verify(requestContent, request.getSignature(), this.getUserPublicKey(locationRequest.getSourceClientId()))) {
-            System.out.println("Some user tried to illegitimately request user" + locationRequest.getUserId() + " location at epoch " + locationRequest.getEp());
+            System.out.println("Server: Some user tried to illegitimately request user" + locationRequest.getUserId() + " location at epoch " + locationRequest.getEp());
             throw new InvalidSignatureException();
         }
 
-        System.out.println("Obtaining location for " + locationRequest.getUserId() + " at epoch " + locationRequest.getEp());
+        System.out.println("Server: Obtaining location for " + locationRequest.getUserId() + " at epoch " + locationRequest.getEp());
 
         return this.getLocationReportResponse(locationReport, locationRequest.getSourceClientId());
     }
@@ -238,7 +238,7 @@ public class Server {
         Location locationRequest = objectMapper.readValue(requestContent, Location.class);
 
         if (!Crypto.verify(requestContent, request.getSignature(), this.getUserPublicKey(-1))) {
-            System.out.println("user" + locationRequest.getUserId() + " tried to illegitimately request users' location at epoch " + locationRequest.getEp() + " " + locationRequest.getLatitude() + ", " + locationRequest.getLongitude());
+            System.out.println("Server: user" + locationRequest.getUserId() + " tried to illegitimately request users' location at epoch " + locationRequest.getEp() + " " + locationRequest.getLatitude() + ", " + locationRequest.getLongitude());
             throw new InvalidSignatureException();
         }
 
@@ -249,7 +249,7 @@ public class Server {
                 locationReportResponses.add(this.getLocationReportResponse(report, -1));
             }
         }
-        System.out.println("Obtaining location for " + locationRequest.getUserId() + " at epoch " + locationRequest.getEp());
+        System.out.println("Server: Obtaining location for " + locationRequest.getUserId() + " at epoch " + locationRequest.getEp());
 
         return LocationServer.ObtainUsersAtLocationResponse.newBuilder()
                 .addAllLocationReports(locationReportResponses)

@@ -29,7 +29,7 @@ public class ProximityServiceImpl extends ProximityServiceGrpc.ProximityServiceI
             }
 
             if (client.verifyLocationProofRequest(request)) {
-                System.out.println("Verified.");
+                System.out.println("user" + client.getClientId() + ": Location proof request verified.");
 
                 Proximity.LocationProofResponse response = client.buildLocationProof(request);
 

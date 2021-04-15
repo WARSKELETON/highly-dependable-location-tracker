@@ -141,7 +141,7 @@ abstract class AbstractClient {
 
             // A single illegitimate proof found in the report should invalidate the whole report
             if (!(this.verifyLocationProof(proof, locationProver) && Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(proof.getWitnessId())))) {
-                System.out.println("Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+                System.out.println("user" + getClientId() + ": Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
                 return false;
             }
         }
@@ -149,11 +149,11 @@ abstract class AbstractClient {
         // Verify inner report client signature and outer server signature
         String reportContentString = locationProverContent + locationProofsContent.stream().reduce("", String::concat);
         if (!Crypto.verify(reportContentString, response.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId())) || !Crypto.verify(reportContentString, response.getServerSignature(), this.getServerPublicKey())) {
-            System.out.println("Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+            System.out.println("user" + getClientId() + ": Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
             return false;
         }
 
-        System.out.println("Legitimate report! User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+        System.out.println("user" + getClientId() + ": Legitimate report! User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
         return true;
     }
 
@@ -166,7 +166,7 @@ abstract class AbstractClient {
             response = locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).obtainLocationReport(request);
         } catch (StatusRuntimeException e) {
             if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
-                System.out.println("TIMEOUT CLIENT");
+                System.out.println("user" + getClientId() + ": TIMEOUT CLIENT");
                 return obtainLocationReport(userId, ep);
             } else {
                 throw e;

@@ -61,7 +61,7 @@ public class ByzantineClient extends Client {
             reports = this.getLocationServerServiceStub().withDeadlineAfter(1, TimeUnit.SECONDS).obtainUsersAtLocation(request).getLocationReportsList();
         } catch (StatusRuntimeException e) {
             if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
-                System.out.println("TIMEOUT CLIENT");
+                System.out.println("Byzantine user" + getClientId() + ": TIMEOUT CLIENT");
                 obtainUsersAtLocation(latitude, longitude, ep);
                 return;
             } else {
@@ -84,7 +84,7 @@ public class ByzantineClient extends Client {
 
         System.out.println("Byzantine user" + getClientId() + ": broadcasting location proof request!");
         for (int witnessId : getProximityServiceStubs().keySet()) {
-            System.out.println(String.format("Sending Location Proof Request to %s...", witnessId));
+            System.out.println("Byzantine user" + getClientId() + ": Sending Location Proof Request to user" + witnessId + "...");
 
             LocationProof locationProof = new LocationProof(location.getUserId(), location.getEp(), location.getLatitude(), location.getLongitude(), witnessId);
 
@@ -93,7 +93,7 @@ public class ByzantineClient extends Client {
                 public void accept(Proximity.LocationProofResponse response) {
                     locationProofsContent.put(witnessId, response.getContent());
                     locationProofsSignatures.put(witnessId, response.getSignature());
-                    System.out.println(String.format("Received proof from %s...", witnessId));
+                    System.out.println("Byzantine user" + getClientId() + ": Received proof from user" + witnessId);
                     finishLatch.countDown();
                 }
             };
@@ -104,7 +104,6 @@ public class ByzantineClient extends Client {
         finishLatch.await(10, TimeUnit.SECONDS);
 
         long count = finishLatch.getCount();
-        System.out.println("Count " + count);
 
         // If necessary build own fake locations proof to complete quorum
         while (count > 0) {

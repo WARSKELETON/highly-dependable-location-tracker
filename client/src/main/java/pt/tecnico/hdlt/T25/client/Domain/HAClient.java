@@ -42,7 +42,7 @@ public class HAClient extends AbstractClient {
             reports = this.getLocationServerServiceStub().withDeadlineAfter(1, TimeUnit.SECONDS).obtainUsersAtLocation(request).getLocationReportsList();
         } catch (StatusRuntimeException e) {
             if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
-                System.out.println("TIMEOUT CLIENT");
+                System.out.println("user" + getClientId() + ": TIMEOUT CLIENT");
                 obtainUsersAtLocation(latitude, longitude, ep);
                 return;
             } else {

@@ -116,9 +116,9 @@ public class Client extends AbstractClient {
 
         final CountDownLatch finishLatch = new CountDownLatch(this.maxByzantineUsers);
 
-        System.out.println("Nearby users: " + nearbyUsers.size());
+        System.out.println("user" + getClientId() + ": Nearby users: " + nearbyUsers.size());
         for (int witnessId : nearbyUsers) {
-            System.out.println(String.format("Sending Location Proof Request to %s...", witnessId));
+            System.out.println("user" + getClientId() + ": Sending Location Proof Request to user" + witnessId + "...");
 
             LocationProof locationProof = new LocationProof(location.getUserId(), location.getEp(), location.getLatitude(), location.getLongitude(), witnessId);
 
@@ -131,10 +131,10 @@ public class Client extends AbstractClient {
                         if (Crypto.verify(response.getContent(), response.getSignature(), getUserPublicKey(witnessId)) && verifyLocationProofResponse(locationProof, response.getContent())) {
                             locationProofsContent.put(witnessId, response.getContent());
                             locationProofsSignatures.put(witnessId, response.getSignature());
-                            System.out.println(String.format("Received legitimate proof from %s...", witnessId));
+                            System.out.println("user" + getClientId() + ": Received legitimate proof from user" + witnessId);
                             finishLatch.countDown();
                         } else {
-                            System.out.println(String.format("Received illegitimate proof from %s...", witnessId));
+                            System.out.println("user" + getClientId() + ": Received illegitimate proof from user" + witnessId);
                         }
                     }
                 }
@@ -144,8 +144,6 @@ public class Client extends AbstractClient {
         }
 
         finishLatch.await(10, TimeUnit.SECONDS);
-
-        System.out.println("Count " + finishLatch.getCount());
 
         if (finishLatch.getCount() == 0) {
             String signature = location.toJsonString() + locationProofsContent.values().stream().reduce("", String::concat);
@@ -159,14 +157,17 @@ public class Client extends AbstractClient {
         return false;
     }
 
-    void requestLocationProof(LocationProof locationProof, int witnessId, Consumer<Proximity.LocationProofResponse> callback) {
-
+    Proximity.LocationProofRequest buildLocationProofRequest(LocationProof locationProof) {
         String content = locationProof.toJsonString();
 
-        Proximity.LocationProofRequest request = Proximity.LocationProofRequest.newBuilder()
+        return Proximity.LocationProofRequest.newBuilder()
                 .setContent(content)
                 .setSignature(Crypto.sign(content, this.getPrivateKey()))
                 .build();
+    }
+
+    void requestLocationProof(LocationProof locationProof, int witnessId, Consumer<Proximity.LocationProofResponse> callback) {
+        Proximity.LocationProofRequest request = buildLocationProofRequest(locationProof);
 
         try {
             proximityServiceStubs.get(witnessId).withDeadlineAfter(1, TimeUnit.SECONDS).requestLocationProof(request, new StreamObserver<>() {
@@ -185,15 +186,12 @@ public class Client extends AbstractClient {
             });
         } catch (StatusRuntimeException e) {
             if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
-                System.out.println("TIMEOUT CLIENT");
+                System.out.println("user" + getClientId() + ": TIMEOUT user" + witnessId);
                 requestLocationProof(locationProof, witnessId, callback);
-                return;
             } else {
                 throw e;
             }
         }
-
-        System.out.println("Requested " + witnessId);
     }
 
     public void submitLocationReport(int ep) throws InterruptedException, GeneralSecurityException {
@@ -235,7 +233,7 @@ public class Client extends AbstractClient {
             response = getLocationServerServiceStub().withDeadlineAfter(1, TimeUnit.SECONDS).submitLocationReport(request);
         } catch (StatusRuntimeException e) {
             if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
-                System.out.println("TIMEOUT CLIENT");
+                System.out.println("user" + getClientId() + ": TIMEOUT CLIENT");
                 submitLocationReport(ep);
                 return;
             } else {
@@ -246,7 +244,7 @@ public class Client extends AbstractClient {
         secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), this.getPrivateKey());
         String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getContent());
         if (Crypto.verify(locationProverContent, response.getSignature(), this.getServerPublicKey()))
-            System.out.println(locationProverContent);
+            System.out.println("user" + getClientId() + ": " + locationProverContent);
     }
 
     @Override
@@ -306,7 +304,7 @@ public class Client extends AbstractClient {
         int longitude = locationProof.getLongitude();
         int witness = locationProof.getWitnessId();
 
-        System.out.println(String.format("Verifying location proof request from user%d...", userId));
+        System.out.println("user" + getClientId() + ": Verifying location proof request from user" + userId);
 
         Location myLocation = getMyLocation(epoch);
 

@@ -18,9 +18,9 @@ public class TestBase {
     private static final String TEST_GRID_FILE = "/grid.json";
 
     static HAClient haClient;
-    static List<Client> clients;
+    static Map<Integer, Client> clients;
     static Server server;
-    static List<ByzantineClient> byzantineClients;
+    static Map<Integer, ByzantineClient> byzantineClients;
     static SystemInfo systemInfo;
 
     @BeforeAll
@@ -43,6 +43,9 @@ public class TestBase {
             List<Integer> byzantineIds = new ArrayList<>();
             byzantineIds.add(15);
             byzantineIds.add(17);
+            byzantineIds.add(30);
+            byzantineIds.add(44);
+            byzantineIds.add(4);
 
             final String serverHost = testProps.getProperty("server.host");
             final int serverPort = Integer.parseInt(testProps.getProperty("server.port"));
@@ -61,14 +64,14 @@ public class TestBase {
 
             System.out.println(server);
 
-            clients = new ArrayList<>();
-            byzantineClients = new ArrayList<>();
+            clients = new HashMap<>();
+            byzantineClients = new HashMap<>();
             haClient = new HAClient(serverHost, serverPort, -1, systemInfo, true);
             for (int i = 0; i < systemInfo.getNumberOfUsers(); i++) {
                 if (byzantineIds.contains(i)) {
-                    byzantineClients.add(new ByzantineClient(serverHost, serverPort, i, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, ByzantineClient.Flavor.SILENT, true));
+                    byzantineClients.put(i, new ByzantineClient(serverHost, serverPort, i, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, ByzantineClient.Flavor.SILENT, true));
                 } else {
-                    clients.add(new Client(serverHost, serverPort, i, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, true));
+                    clients.put(i, new Client(serverHost, serverPort, i, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, true));
                 }
             }
         }
