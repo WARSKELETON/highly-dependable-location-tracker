@@ -10,6 +10,7 @@ import pt.tecnico.hdlt.T25.client.Domain.Client;
 import pt.tecnico.hdlt.T25.client.Domain.Location;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
+import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.security.PrivateKey;
 import java.util.*;
@@ -173,6 +174,10 @@ public class SystemIT extends TestBase {
                     Assertions.assertEquals(originalLocation.getEp(), locationResponse1.getEp());
                     Assertions.assertEquals(originalLocation.getLatitude(), locationResponse1.getLatitude());
                     Assertions.assertEquals(originalLocation.getLongitude(), locationResponse1.getLongitude());
+                    System.out.println();
+                    System.out.println("HAClient obtains users for " + originalLocation.getEp() + " " + originalLocation.getLatitude() + ", " + originalLocation.getLongitude());
+                    List<Location> locationResponses = haClient.obtainUsersAtLocation(originalLocation.getLatitude(), originalLocation.getLongitude(), originalLocation.getEp());
+                    assertEquals(1, locationResponses.stream().filter(location -> location.getUserId() == originalLocation.getUserId()).count());
                 }
             }
         }
@@ -326,5 +331,40 @@ public class SystemIT extends TestBase {
         Client finalTestClient = testClient;
         Assertions.assertEquals(Status.Code.ALREADY_EXISTS,
                 assertThrows(StatusRuntimeException.class, () -> finalTestClient.submitLocationReport(0)).getStatus().getCode());
+    }
+
+    @Test
+    public void DropReport() throws GeneralSecurityException, InterruptedException, IOException {
+        server.shutdownServer();
+        Client testClient = null;
+        for (Client client : clients.values()) {
+            if (client.getNearbyUsers(client.getMyLocation(0)).size() >= client.getMaxByzantineUsers() + client.getMaxNearbyByzantineUsers()) {
+                testClient = client;
+                break;
+            }
+        }
+
+        assert testClient != null;
+        System.out.println("user" + testClient.getClientId() + " building a correct report.");
+        Location originalLocation = testClient.getMyLocation(0);
+
+        Client finalTestClient = testClient;
+        Thread task = new Thread(()  -> {
+            try {
+                finalTestClient.submitLocationReport(0);
+            } catch (GeneralSecurityException | InterruptedException e) {
+                e.printStackTrace();
+            }
+        });
+        task.start();
+
+        Thread.sleep(4000);
+        server.startServer();
+        Thread.sleep(5000);
+        Location locationResponse = testClient.obtainLocationReport(testClient.getClientId(), 0);
+        Assertions.assertEquals(originalLocation.getUserId(), locationResponse.getUserId());
+        Assertions.assertEquals(originalLocation.getEp(), locationResponse.getEp());
+        Assertions.assertEquals(originalLocation.getLatitude(), locationResponse.getLatitude());
+        Assertions.assertEquals(originalLocation.getLongitude(), locationResponse.getLongitude());
     }
 }

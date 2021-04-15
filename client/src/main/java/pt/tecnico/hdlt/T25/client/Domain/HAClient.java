@@ -1,12 +1,14 @@
 package pt.tecnico.hdlt.T25.client.Domain;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.StatusRuntimeException;
 import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
 import javax.crypto.spec.SecretKeySpec;
 import java.security.GeneralSecurityException;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -24,7 +26,7 @@ public class HAClient extends AbstractClient {
         if (!isTest) this.eventLoop();
     }
 
-    private void obtainUsersAtLocation(int latitude, int longitude, int ep) throws JsonProcessingException, GeneralSecurityException {
+    public List<Location> obtainUsersAtLocation(int latitude, int longitude, int ep) throws JsonProcessingException, GeneralSecurityException {
         Location usersLocationRequest = new Location(-1, ep, latitude, longitude);
         String requestContent = usersLocationRequest.toJsonString();
 
@@ -43,16 +45,23 @@ public class HAClient extends AbstractClient {
         } catch (StatusRuntimeException e) {
             if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
                 System.out.println("user" + getClientId() + ": TIMEOUT CLIENT");
-                obtainUsersAtLocation(latitude, longitude, ep);
-                return;
+                return obtainUsersAtLocation(latitude, longitude, ep);
             } else {
                 throw e;
             }
         }
 
+        List<Location> locations = new ArrayList<>();
+        ObjectMapper objectMapper = new ObjectMapper();
         for (LocationServer.ObtainLocationReportResponse report : reports) {
-            verifyLocationReport(report);
+            if (verifyLocationReport(report)) {
+                secretKeySpec = Crypto.decryptKeyWithRSA(report.getKey(), this.getPrivateKey());
+                String locationProverContent = Crypto.decryptAES(secretKeySpec, report.getLocationProver().getContent());
+                locations.add(objectMapper.readValue(locationProverContent, Location.class));
+            }
         }
+
+        return locations;
     }
 
     @Override

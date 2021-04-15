@@ -36,6 +36,7 @@ public class Server {
     private int maxByzantineUsers;
     private int maxNearbyByzantineUsers;
 
+    private io.grpc.Server server;
     private final PrivateKey privateKey;
     private Map<Integer, PublicKey> clientPublicKeys;
     private Map<Pair<Integer, Integer>, LocationReport> locationReports; // <UserId, Epoch> to Location Report
@@ -98,14 +99,20 @@ public class Server {
         }
     }
 
-    private void startServer() throws IOException {
+    public void startServer() throws IOException {
         final BindableService impl = new LocationServerServiceImpl(this);
 
-        io.grpc.Server server = ServerBuilder.forPort(port).addService(impl).build();
+        server = ServerBuilder.forPort(port).addService(impl).build();
 
         server.start();
 
         System.out.println("Server: Server started");
+    }
+
+    public void shutdownServer() {
+        server.shutdown();
+
+        System.out.println("Server: Server shutdown");
     }
 
     private PublicKey getUserPublicKey(int userId) {
