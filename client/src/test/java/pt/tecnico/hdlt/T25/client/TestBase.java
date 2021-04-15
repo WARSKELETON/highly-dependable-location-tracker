@@ -22,6 +22,7 @@ public class TestBase {
     static Server server;
     static Map<Integer, ByzantineClient> byzantineClients;
     static SystemInfo systemInfo;
+    static int serverPort;
 
     @BeforeAll
     public static void oneTimeSetup() throws IOException {
@@ -48,7 +49,7 @@ public class TestBase {
             byzantineIds.add(4);
 
             final String serverHost = testProps.getProperty("server.host");
-            final int serverPort = Integer.parseInt(testProps.getProperty("server.port"));
+            serverPort = Integer.parseInt(testProps.getProperty("server.port"));
             final int maxByzantineUsers = Integer.parseInt(testProps.getProperty("maxByzantineUsers"));
             final int maxNearbyByzantineUsers = Integer.parseInt(testProps.getProperty("maxNearbyByzantineUsers"));
 

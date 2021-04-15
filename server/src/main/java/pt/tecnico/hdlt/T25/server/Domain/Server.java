@@ -59,9 +59,11 @@ public class Server {
         try {
             try {
                 recoverServerState(SERVER_RECOVERY_FILE_PATH);
+                System.out.println("Server: Recovered previous state successfully.");
             }
             catch (IOException|NullPointerException e) {
                 recoverServerState(BACKUP_RECOVERY_FILE_PATH);
+                System.out.println("Server: Recovered backup previous state successfully.");
             }
         }
         catch (IOException|NullPointerException e) {

@@ -9,6 +9,7 @@ import pt.tecnico.hdlt.T25.client.Domain.ByzantineClient;
 import pt.tecnico.hdlt.T25.client.Domain.Client;
 import pt.tecnico.hdlt.T25.client.Domain.Location;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
+import pt.tecnico.hdlt.T25.server.Domain.Server;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
@@ -361,6 +362,41 @@ public class SystemIT extends TestBase {
         Thread.sleep(4000);
         server.startServer();
         Thread.sleep(5000);
+        Location locationResponse = testClient.obtainLocationReport(testClient.getClientId(), 0);
+        Assertions.assertEquals(originalLocation.getUserId(), locationResponse.getUserId());
+        Assertions.assertEquals(originalLocation.getEp(), locationResponse.getEp());
+        Assertions.assertEquals(originalLocation.getLatitude(), locationResponse.getLatitude());
+        Assertions.assertEquals(originalLocation.getLongitude(), locationResponse.getLongitude());
+    }
+
+    @Test
+    public void CrashServer() throws GeneralSecurityException, InterruptedException, IOException {
+        Client testClient = null;
+        for (Client client : clients.values()) {
+            if (client.getNearbyUsers(client.getMyLocation(0)).size() >= client.getMaxByzantineUsers() + client.getMaxNearbyByzantineUsers()) {
+                testClient = client;
+                break;
+            }
+        }
+
+        assert testClient != null;
+        System.out.println("user" + testClient.getClientId() + " building a correct report.");
+        Location originalLocation = testClient.getMyLocation(0);
+
+        testClient.submitLocationReport(0);
+        server.shutdownServer();
+
+        Client finalTestClient = testClient;
+        Thread task = new Thread(() -> {
+            try {
+                server = new Server(serverPort, systemInfo.getNumberOfUsers(), systemInfo.getStep(), finalTestClient.getMaxByzantineUsers(), finalTestClient.getMaxNearbyByzantineUsers());
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+
+        task.start();
+
         Location locationResponse = testClient.obtainLocationReport(testClient.getClientId(), 0);
         Assertions.assertEquals(originalLocation.getUserId(), locationResponse.getUserId());
         Assertions.assertEquals(originalLocation.getEp(), locationResponse.getEp());
