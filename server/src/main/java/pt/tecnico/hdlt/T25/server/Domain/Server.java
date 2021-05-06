@@ -216,7 +216,7 @@ public class Server {
                 proof.getLongitude() == locationProver.getLongitude();
     }
 
-    public LocationServer.ObtainLocationReportResponse obtainLocationReport(LocationServer.ObtainLocationReportRequest request) throws JsonProcessingException, GeneralSecurityException, InvalidSignatureException, ReportNotFoundException, StaleException {
+    public LocationServer.ObtainLocationReportResponse obtainLocationReport(LocationServer.ObtainLocationReportRequest request) throws IOException, GeneralSecurityException, InvalidSignatureException, ReportNotFoundException, StaleException {
         ObjectMapper objectMapper = new ObjectMapper();
 
         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(request.getKey(), this.privateKey);
@@ -239,6 +239,7 @@ public class Server {
         }
 
         System.out.println("Server: Obtaining location for " + locationRequest.getUserId() + " at epoch " + locationRequest.getEp());
+        this.saveCurrentServerState();
 
         return this.getLocationReportResponse(locationReport, sourceClientId, seqNumbers.get(sourceClientId));
     }
@@ -273,17 +274,23 @@ public class Server {
                 .build();
     }
 
-    public LocationServer.ObtainUsersAtLocationResponse obtainUsersAtLocation(LocationServer.ObtainUsersAtLocationRequest request) throws JsonProcessingException, GeneralSecurityException, InvalidSignatureException {
+    public LocationServer.ObtainUsersAtLocationResponse obtainUsersAtLocation(LocationServer.ObtainUsersAtLocationRequest request) throws IOException, GeneralSecurityException, InvalidSignatureException, StaleException {
         ObjectMapper objectMapper = new ObjectMapper();
 
         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(request.getKey(), this.privateKey);
         String requestContent = Crypto.decryptAES(secretKeySpec, request.getContent());
+        int receivedSeqNumber = Integer.parseInt(Crypto.decryptAES(secretKeySpec, request.getSeqNumber()));
         Location locationRequest = objectMapper.readValue(requestContent, Location.class);
 
-        // TODO GET SEQ NUMBER RECEIVED AND INCREMENT
+        int clientId = locationRequest.getUserId();
 
-        if (!Crypto.verify(requestContent, request.getSignature(), this.getUserPublicKey(-1))) {
-            System.out.println("Server: user" + locationRequest.getUserId() + " tried to illegitimately request users' location at epoch " + locationRequest.getEp() + " " + locationRequest.getLatitude() + ", " + locationRequest.getLongitude());
+        int expectedSeqNumber = seqNumbers.get(clientId);
+
+        if (receivedSeqNumber != expectedSeqNumber) throw new StaleException(clientId, receivedSeqNumber, expectedSeqNumber);
+        seqNumbers.put(clientId, expectedSeqNumber + 1);
+
+        if (!Crypto.verify(requestContent + receivedSeqNumber, request.getSignature(), this.getUserPublicKey(-1))) {
+            System.out.println("Server: user" + clientId + " tried to illegitimately request users' location at epoch " + locationRequest.getEp() + " " + locationRequest.getLatitude() + ", " + locationRequest.getLongitude());
             throw new InvalidSignatureException();
         }
 
@@ -294,7 +301,9 @@ public class Server {
                 locationReportResponses.add(this.getLocationReportResponse(report, -1, seqNumbers.get(-1)));
             }
         }
-        System.out.println("Server: Obtaining location for " + locationRequest.getUserId() + " at epoch " + locationRequest.getEp());
+        System.out.println("Server: Obtaining location for " + clientId + " at epoch " + locationRequest.getEp());
+
+        this.saveCurrentServerState();
 
         return LocationServer.ObtainUsersAtLocationResponse.newBuilder()
                 .addAllLocationReports(locationReportResponses)
@@ -312,7 +321,7 @@ public class Server {
                 .build();
     }
 
-    private void saveCurrentServerState() throws IOException{
+    private void saveCurrentServerState() throws IOException {
         ObjectMapper objectMapper = new ObjectMapper();
         ArrayNode seqArrayNode = objectMapper.createArrayNode();
         ArrayNode arrayNode = objectMapper.createArrayNode();

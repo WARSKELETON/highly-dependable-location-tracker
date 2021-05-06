@@ -17,6 +17,7 @@ import java.util.logging.Logger;
 public class LocationServerServiceImpl extends LocationServerServiceGrpc.LocationServerServiceImplBase {
 	private static final Logger LOGGER = Logger.getLogger(LocationServerServiceImpl.class.getName());
 	private final Server locationServer;
+	static int count = 0;
 
 	public LocationServerServiceImpl(Server server) {
 		locationServer = server;
@@ -82,7 +83,7 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 			responseObserver.onError(Status.FAILED_PRECONDITION.withDescription(ex.getMessage()).asRuntimeException());
 		} catch (InvalidSignatureException ex2) {
 			responseObserver.onError(Status.PERMISSION_DENIED.withDescription(ex2.getMessage()).asRuntimeException());
-		} catch (GeneralSecurityException | JsonProcessingException ex3) {
+		} catch (IOException | GeneralSecurityException ex3) {
 			responseObserver.onError(Status.ABORTED.withDescription(ex3.getMessage()).asRuntimeException());
 		}
 	}
@@ -99,9 +100,11 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 
 			responseObserver.onNext(response);
 			responseObserver.onCompleted();
+		} catch (StaleException ex) {
+			responseObserver.onError(Status.FAILED_PRECONDITION.withDescription(ex.getMessage()).asRuntimeException());
 		} catch (InvalidSignatureException ex) {
 			responseObserver.onError(Status.PERMISSION_DENIED.withDescription(ex.getMessage()).asRuntimeException());
-		} catch (GeneralSecurityException | JsonProcessingException ex2) {
+		} catch (GeneralSecurityException | IOException ex2) {
 			responseObserver.onError(Status.ABORTED.withDescription(ex2.getMessage()).asRuntimeException());
 		}
 	}

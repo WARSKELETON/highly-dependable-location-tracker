@@ -24,12 +24,20 @@ public class HAClient extends AbstractClient {
         super(serverHost, serverPort, clientId, systemInfo);
         this.setPrivateKey(getPriv("ha-priv.key"));
         checkLatestSeqNumber();
+        System.out.println("Seq number: " + getSeqNumber());
         if (!isTest) this.eventLoop();
     }
 
     public List<Location> obtainUsersAtLocation(int latitude, int longitude, int ep) throws JsonProcessingException, GeneralSecurityException {
+        int currentSeqNumber;
+        synchronized (getSeqNumberLock()) {
+            currentSeqNumber = this.getSeqNumber();
+            setSeqNumber(currentSeqNumber + 1);
+        }
+
         Location usersLocationRequest = new Location(-1, ep, latitude, longitude);
         String requestContent = usersLocationRequest.toJsonString();
+        String signatureString = requestContent + currentSeqNumber;
 
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
@@ -37,25 +45,28 @@ public class HAClient extends AbstractClient {
         LocationServer.ObtainUsersAtLocationRequest request = LocationServer.ObtainUsersAtLocationRequest.newBuilder()
                 .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey()))
                 .setContent(Crypto.encryptAES(secretKeySpec, requestContent))
-                .setSignature(Crypto.sign(requestContent, this.getPrivateKey()))
+                .setSignature(Crypto.sign(signatureString, this.getPrivateKey()))
+                .setSeqNumber(Crypto.encryptAES(secretKeySpec, String.valueOf(currentSeqNumber)))
                 .build();
 
         List<LocationServer.ObtainLocationReportResponse> reports;
-        try {
-            reports = this.getLocationServerServiceStub().withDeadlineAfter(1, TimeUnit.SECONDS).obtainUsersAtLocation(request).getLocationReportsList();
-        } catch (StatusRuntimeException e) {
-            if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
-                System.out.println("user" + getClientId() + ": TIMEOUT CLIENT");
-                return obtainUsersAtLocation(latitude, longitude, ep);
-            } else {
-                throw e;
+        while (true) {
+            try {
+                reports = this.getLocationServerServiceStub().withDeadlineAfter(1, TimeUnit.SECONDS).obtainUsersAtLocation(request).getLocationReportsList();
+                break;
+            } catch (StatusRuntimeException e) {
+                if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
+                    System.out.println("user" + getClientId() + ": TIMEOUT CLIENT");
+                } else {
+                    throw e;
+                }
             }
         }
 
         List<Location> locations = new ArrayList<>();
         ObjectMapper objectMapper = new ObjectMapper();
         for (LocationServer.ObtainLocationReportResponse report : reports) {
-            if (verifyLocationReport(report)) {
+            if (verifyLocationReport(report, currentSeqNumber)) {
                 secretKeySpec = Crypto.decryptKeyWithRSA(report.getKey(), this.getPrivateKey());
                 String locationProverContent = Crypto.decryptAES(secretKeySpec, report.getLocationProver().getContent());
                 locations.add(objectMapper.readValue(locationProverContent, Location.class));

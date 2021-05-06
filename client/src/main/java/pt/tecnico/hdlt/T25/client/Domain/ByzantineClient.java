@@ -44,8 +44,15 @@ public class ByzantineClient extends Client {
     }
 
     public void obtainUsersAtLocation(int latitude, int longitude, int ep) throws JsonProcessingException, GeneralSecurityException {
+        int currentSeqNumber;
+        synchronized (getSeqNumberLock()) {
+            currentSeqNumber = this.getSeqNumber();
+            setSeqNumber(currentSeqNumber + 1);
+        }
+
         Location usersLocationRequest = new Location(-1, ep, latitude, longitude);
         String requestContent = usersLocationRequest.toJsonString();
+        String signatureString = requestContent + currentSeqNumber;
 
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
@@ -53,24 +60,26 @@ public class ByzantineClient extends Client {
         LocationServer.ObtainUsersAtLocationRequest request = LocationServer.ObtainUsersAtLocationRequest.newBuilder()
                 .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey()))
                 .setContent(Crypto.encryptAES(secretKeySpec, requestContent))
-                .setSignature(Crypto.sign(requestContent, this.getPrivateKey()))
+                .setSignature(Crypto.sign(signatureString, this.getPrivateKey()))
+                .setSeqNumber(Crypto.encryptAES(secretKeySpec, String.valueOf(currentSeqNumber)))
                 .build();
 
         List<LocationServer.ObtainLocationReportResponse> reports;
-        try {
-            reports = this.getLocationServerServiceStub().withDeadlineAfter(1, TimeUnit.SECONDS).obtainUsersAtLocation(request).getLocationReportsList();
-        } catch (StatusRuntimeException e) {
-            if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
-                System.out.println("Byzantine user" + getClientId() + ": TIMEOUT CLIENT");
-                obtainUsersAtLocation(latitude, longitude, ep);
-                return;
-            } else {
-                throw e;
+        while (true) {
+            try {
+                reports = this.getLocationServerServiceStub().withDeadlineAfter(1, TimeUnit.SECONDS).obtainUsersAtLocation(request).getLocationReportsList();
+                break;
+            } catch (StatusRuntimeException e) {
+                if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
+                    System.out.println("user" + getClientId() + ": TIMEOUT CLIENT");
+                } else {
+                    throw e;
+                }
             }
         }
 
         for (LocationServer.ObtainLocationReportResponse report : reports) {
-            verifyLocationReport(report);
+            verifyLocationReport(report, currentSeqNumber);
         }
     }
 

@@ -30,6 +30,7 @@ abstract class AbstractClient {
     private PublicKey serverPublicKey;
     private Map<Integer, PublicKey> publicKeys;
     private SystemInfo systemInfo;
+    private final Object seqNumberLock = new Object();
     private LocationServerServiceGrpc.LocationServerServiceBlockingStub locationServerServiceStub;
 
     AbstractClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo) throws GeneralSecurityException, JsonProcessingException {
@@ -109,6 +110,10 @@ abstract class AbstractClient {
         this.seqNumber = seqNumber;
     }
 
+    public Object getSeqNumberLock() {
+        return seqNumberLock;
+    }
+
     public LocationServerServiceGrpc.LocationServerServiceBlockingStub getLocationServerServiceStub() {
         return locationServerServiceStub;
     }
@@ -134,7 +139,7 @@ abstract class AbstractClient {
                 proof.getLongitude() == locationProver.getLongitude();
     }
 
-    boolean verifyLocationReport(LocationServer.ObtainLocationReportResponse response) throws JsonProcessingException, GeneralSecurityException {
+    boolean verifyLocationReport(LocationServer.ObtainLocationReportResponse response, int currentSeqNumber) throws JsonProcessingException, GeneralSecurityException {
         ObjectMapper objectMapper = new ObjectMapper();
 
         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), this.privateKey);
@@ -145,8 +150,8 @@ abstract class AbstractClient {
         Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
         List<String> locationProofsContent = new ArrayList<>();
 
-        if (receivedSeqNumber != this.seqNumber + 1) {
-            System.out.println("user" + getClientId() + ": Server should not be trusted! Received sequence number " + receivedSeqNumber + " but expected " + this.seqNumber + 1);
+        if (receivedSeqNumber != currentSeqNumber + 1) {
+            System.out.println("user" + getClientId() + ": Server should not be trusted! Received sequence number " + receivedSeqNumber + " but expected " + currentSeqNumber + 1);
             return false;
         }
 
@@ -170,7 +175,6 @@ abstract class AbstractClient {
             return false;
         }
 
-        this.seqNumber += 1;
         System.out.println("user" + getClientId() + ": Legitimate report! User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
         return true;
     }
@@ -222,21 +226,30 @@ abstract class AbstractClient {
     }
 
     public Location obtainLocationReport(int userId, int ep) throws JsonProcessingException, GeneralSecurityException {
-        LocationServer.ObtainLocationReportRequest request = this.buildObtainLocationReportRequest(userId, ep);
+        int currentSeqNumber;
+        synchronized (seqNumberLock) {
+            currentSeqNumber = this.seqNumber;
+            this.seqNumber += 1;
+        }
 
         LocationServer.ObtainLocationReportResponse response;
-        try {
-            response = locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).obtainLocationReport(request);
-        } catch (StatusRuntimeException e) {
-            if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
-                System.out.println("user" + getClientId() + ": TIMEOUT CLIENT");
-                return obtainLocationReport(userId, ep);
-            } else {
-                throw e;
+
+        while (true) {
+            LocationServer.ObtainLocationReportRequest request = this.buildObtainLocationReportRequest(userId, ep, currentSeqNumber);
+
+            try {
+                response = locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).obtainLocationReport(request);
+                break;
+            } catch (StatusRuntimeException e) {
+                if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
+                    System.out.println("user" + getClientId() + ": TIMEOUT CLIENT");
+                } else {
+                    throw e;
+                }
             }
         }
 
-        if (response != null && verifyLocationReport(response)) {
+        if (response != null && verifyLocationReport(response, currentSeqNumber)) {
             ObjectMapper objectMapper = new ObjectMapper();
 
             SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), this.privateKey);
@@ -246,8 +259,8 @@ abstract class AbstractClient {
         return null;
     }
 
-    public LocationServer.ObtainLocationReportRequest buildObtainLocationReportRequest(int userId, int ep) throws GeneralSecurityException {
-        LocationReportRequest locationRequest = new LocationReportRequest(userId, ep, 0, 0, this.clientId, seqNumber);
+    public LocationServer.ObtainLocationReportRequest buildObtainLocationReportRequest(int userId, int ep, int currentSeqNumber) throws GeneralSecurityException {
+        LocationReportRequest locationRequest = new LocationReportRequest(userId, ep, 0, 0, this.clientId, currentSeqNumber);
         String requestContent = locationRequest.toJsonString();
 
         byte[] encodedKey = Crypto.generateSecretKey();

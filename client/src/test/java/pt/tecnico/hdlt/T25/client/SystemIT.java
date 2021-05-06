@@ -71,7 +71,7 @@ public class SystemIT extends TestBase {
         Assertions.assertEquals(originalLocation.getLongitude(), locationResponse1.getLongitude());
     }
 
-    @Test
+    /*@Test
     public void ReplayObtainReportRequest() throws GeneralSecurityException, InterruptedException, JsonProcessingException {
         Client manInTheMiddle = null;
         Client testClient = null;
@@ -107,7 +107,7 @@ public class SystemIT extends TestBase {
         if (response != null) {
             assertThrows(GeneralSecurityException.class, () -> Crypto.decryptKeyWithRSA(response.getKey(), privateKey));
         }
-    }
+    }*/
 
     @Test
     public void AutomaticCorrectReportWithReplayAndSufficientNeighbors() throws GeneralSecurityException, InterruptedException, JsonProcessingException {
