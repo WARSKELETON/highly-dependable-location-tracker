@@ -41,6 +41,8 @@ public class Client extends AbstractClient {
         this.proximityServiceStubs = new HashMap<>();
         this.connectToClients();
         this.setPrivateKey(getPriv("client" + clientId + "-priv.key"));
+        checkLatestSeqNumber();
+        System.out.println("Seq number: " + getSeqNumber());
         if (!isTest) this.eventLoop();
     }
 

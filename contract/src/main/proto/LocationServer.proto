@@ -4,6 +4,18 @@
 syntax = "proto3";
 package pt.tecnico.hdlt.T25;
 
+message ObtainLatestSeqNumberRequest {
+  string key = 1;
+  string content = 2;
+  string signature = 3;
+}
+
+message ObtainLatestSeqNumberResponse {
+  string key = 1;
+  string content = 2;
+  string signature = 3;
+}
+
 message SubmitLocationReportRequest {
   string key = 1;
   LocationMessage locationProver = 2;
@@ -27,6 +39,7 @@ message ObtainLocationReportResponse {
   LocationMessage locationProver = 2;
   repeated LocationMessage locationProofs = 3;
   string serverSignature = 4;
+  string seqNumber = 5;
 }
 
 message ObtainUsersAtLocationRequest {
@@ -45,6 +58,7 @@ message LocationMessage {
 }
 
 service LocationServerService {
+  rpc obtainLatestSeqNumber(ObtainLatestSeqNumberRequest) returns (ObtainLatestSeqNumberResponse);
   rpc submitLocationReport(SubmitLocationReportRequest) returns (SubmitLocationReportResponse);
   rpc obtainLocationReport(ObtainLocationReportRequest) returns (ObtainLocationReportResponse);
   rpc obtainUsersAtLocation(ObtainUsersAtLocationRequest) returns (ObtainUsersAtLocationResponse);

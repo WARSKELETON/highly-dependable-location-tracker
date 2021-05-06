@@ -36,6 +36,8 @@ public class ServerApp {
 			System.err.println("Server crashed due to some internal error.");
 		} catch (GeneralSecurityException ex2) {
 			System.err.println("Server crashed when trying to obtain keys.");
+		} catch (InterruptedException e) {
+			e.printStackTrace();
 		}
 	}
 }

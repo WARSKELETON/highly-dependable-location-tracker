@@ -6,13 +6,15 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 public class LocationReportRequest extends Location {
 
     private int sourceClientId;
+    private int seqNumber;
 
     public LocationReportRequest() {
     }
 
-    public LocationReportRequest(int userId, int ep, int latitude, int longitude, int sourceClientId) {
+    public LocationReportRequest(int userId, int ep, int latitude, int longitude, int sourceClientId, int seqNumber) {
         super(userId, ep, latitude, longitude);
         this.sourceClientId = sourceClientId;
+        this.seqNumber = seqNumber;
     }
 
     public int getSourceClientId() {
@@ -21,6 +23,14 @@ public class LocationReportRequest extends Location {
 
     public void setSourceClientId(int sourceClientId) {
         this.sourceClientId = sourceClientId;
+    }
+
+    public int getSeqNumber() {
+        return seqNumber;
+    }
+
+    public void setSeqNumber(int seqNumber) {
+        this.seqNumber = seqNumber;
     }
 
     @Override
@@ -33,6 +43,7 @@ public class LocationReportRequest extends Location {
         node.put("latitude", this.getLatitude());
         node.put("longitude", this.getLongitude());
         node.put("sourceClientId", this.sourceClientId);
+        node.put("seqNumber", this.seqNumber);
 
         return node;
     }

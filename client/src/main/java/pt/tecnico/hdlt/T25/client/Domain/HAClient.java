@@ -20,9 +20,10 @@ public class HAClient extends AbstractClient {
     private static final String OBTAIN_LOCATION_REPORT = "obtainLocation";
     private static final String OBTAIN_USERS_AT_LOCATION = "obtainUsers";
 
-    public HAClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, boolean isTest) throws GeneralSecurityException {
+    public HAClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, boolean isTest) throws GeneralSecurityException, JsonProcessingException {
         super(serverHost, serverPort, clientId, systemInfo);
         this.setPrivateKey(getPriv("ha-priv.key"));
+        checkLatestSeqNumber();
         if (!isTest) this.eventLoop();
     }
 

@@ -7,10 +7,7 @@ import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.LocationServerServiceGrpc;
 
 import io.grpc.stub.StreamObserver;
-import pt.tecnico.hdlt.T25.server.Domain.Exceptions.DuplicateReportException;
-import pt.tecnico.hdlt.T25.server.Domain.Exceptions.InvalidNumberOfProofsException;
-import pt.tecnico.hdlt.T25.server.Domain.Exceptions.InvalidSignatureException;
-import pt.tecnico.hdlt.T25.server.Domain.Exceptions.ReportNotFoundException;
+import pt.tecnico.hdlt.T25.server.Domain.Exceptions.*;
 import pt.tecnico.hdlt.T25.server.Domain.Server;
 
 import java.io.IOException;
@@ -23,6 +20,25 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 
 	public LocationServerServiceImpl(Server server) {
 		locationServer = server;
+	}
+
+	@Override
+	public void obtainLatestSeqNumber(LocationServer.ObtainLatestSeqNumberRequest request, StreamObserver<LocationServer.ObtainLatestSeqNumberResponse> responseObserver) {
+		try {
+			if (Context.current().isCancelled()) {
+				System.out.println("TIMEOUT SERVER");
+				responseObserver.onError(Status.CANCELLED.asRuntimeException());
+				return;
+			}
+			LocationServer.ObtainLatestSeqNumberResponse response = locationServer.obtainLatestSeqNumber(request);
+
+			responseObserver.onNext(response);
+			responseObserver.onCompleted();
+		} catch (InvalidSignatureException ex3) {
+			responseObserver.onError(Status.UNAUTHENTICATED.withDescription(ex3.getMessage()).asRuntimeException());
+		} catch (GeneralSecurityException ex4) {
+			responseObserver.onError(Status.ABORTED.withDescription(ex4.getMessage()).asRuntimeException());
+		}
 	}
 
 	@Override
@@ -62,6 +78,8 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 			responseObserver.onCompleted();
 		} catch (ReportNotFoundException ex) {
 			responseObserver.onError(Status.NOT_FOUND.withDescription(ex.getMessage()).asRuntimeException());
+		} catch (StaleException ex) {
+			responseObserver.onError(Status.FAILED_PRECONDITION.withDescription(ex.getMessage()).asRuntimeException());
 		} catch (InvalidSignatureException ex2) {
 			responseObserver.onError(Status.PERMISSION_DENIED.withDescription(ex2.getMessage()).asRuntimeException());
 		} catch (GeneralSecurityException | JsonProcessingException ex3) {
