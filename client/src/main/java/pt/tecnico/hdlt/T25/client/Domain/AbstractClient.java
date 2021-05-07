@@ -33,6 +33,7 @@ abstract class AbstractClient {
     private int clientId;
     private int seqNumber;
     private int maxReplicas;
+    private int maxByzantineReplicas;
     private PrivateKey privateKey;
     private PublicKey serverPublicKey;
     private Map<Integer, PublicKey> publicKeys;
@@ -40,12 +41,13 @@ abstract class AbstractClient {
     private final Object seqNumberLock = new Object();
     private Map<Integer, LocationServerServiceGrpc.LocationServerServiceStub> locationServerServiceStubs;
 
-    AbstractClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxReplicas) throws GeneralSecurityException, JsonProcessingException {
+    AbstractClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxReplicas, int maxByzantineReplicas) throws GeneralSecurityException, JsonProcessingException {
         this.serverHost = serverHost;
         this.serverPort = serverPort;
         this.clientId = clientId;
         this.systemInfo = systemInfo;
         this.maxReplicas = maxReplicas;
+        this.maxByzantineReplicas = maxByzantineReplicas;
         this.seqNumber = 0;
         this.publicKeys = new HashMap<>();
         this.locationServerServiceStubs = new HashMap<>();
@@ -219,7 +221,6 @@ abstract class AbstractClient {
     public void checkLatestSeqNumberRegular() throws GeneralSecurityException, InterruptedException {
         LocationServer.ObtainLatestSeqNumberRequest request = buildObtainLatestSeqNumberRequest();
 
-        System.out.println("CONAAAAAAAAAA");
         // TODO BYZANTINE QUORUM
         final CountDownLatch finishLatch = new CountDownLatch(3);
 

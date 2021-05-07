@@ -34,6 +34,7 @@
 		<maxNearbyByzantineUsers>2</maxNearbyByzantineUsers>
 		<client.isByzantine>false</client.isByzantine>
 		<server.maxReplicas>4</server.maxReplicas>
+		<server.maxByzantineReplicas>1</server.maxByzantineReplicas>
 	</properties>
 
 	<dependencies>
@@ -128,6 +129,7 @@
                         <argument>${maxNearbyByzantineUsers}</argument>
                         <argument>${client.isByzantine}</argument>
 						<argument>${server.maxReplicas}</argument>
+						<argument>${server.maxByzantineReplicas}</argument>
 					</arguments>
 				</configuration>
 			</plugin>

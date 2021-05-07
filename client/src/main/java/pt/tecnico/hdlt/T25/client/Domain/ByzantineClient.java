@@ -31,8 +31,8 @@ public class ByzantineClient extends Client {
 
     private Flavor flavor;
 
-    public ByzantineClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxByzantineUsers, int maxNearbyByzantineUsers, Flavor flavor, boolean isTest, int maxReplicas) throws IOException, GeneralSecurityException, InterruptedException {
-        super(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, isTest, maxReplicas);
+    public ByzantineClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxByzantineUsers, int maxNearbyByzantineUsers, Flavor flavor, boolean isTest, int maxReplicas, int maxByzantineReplicas) throws IOException, GeneralSecurityException, InterruptedException {
+        super(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, isTest, maxReplicas, maxByzantineReplicas);
         this.flavor = flavor;
     }
 

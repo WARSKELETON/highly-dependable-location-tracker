@@ -8,17 +8,17 @@ Make sure you have installed the contract module first.
 
 To compile and run the Client (correct user):
 ```
-mvn compile exec:java -Dexec.args="${serverHost} ${serverPort} ${clientId} ${maxByzantineUsers} ${maxNearbyByzantineUsers} ${maxReplicas}"
+mvn compile exec:java -Dexec.args="${serverHost} ${serverPort} ${clientId} ${maxByzantineUsers} ${maxNearbyByzantineUsers} ${maxReplicas} ${maxByzantineReplicas}"
 ```
 
 To compile and run the HAClient:
 ```
-mvn compile exec:java -Dexec.args="${serverHost} ${serverPort} -1 ${maxByzantineUsers} ${maxNearbyByzantineUsers} ${maxReplicas}"
+mvn compile exec:java -Dexec.args="${serverHost} ${serverPort} -1 ${maxByzantineUsers} ${maxNearbyByzantineUsers} ${maxReplicas} ${maxByzantineReplicas}"
 ```
 
 To compile and run the ByzantineClient:
 ```
-mvn compile exec:java -Dexec.args="${serverHost} ${serverPort} ${clientId} ${maxByzantineUsers} ${maxNearbyByzantineUsers} ${maxReplicas} ${isByzantine}"
+mvn compile exec:java -Dexec.args="${serverHost} ${serverPort} ${clientId} ${maxByzantineUsers} ${maxNearbyByzantineUsers} ${maxReplicas} ${maxByzantineReplicas} ${isByzantine}"
 ```
 
 ## User Commands

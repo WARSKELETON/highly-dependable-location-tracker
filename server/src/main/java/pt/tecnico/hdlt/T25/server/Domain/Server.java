@@ -80,7 +80,7 @@ public class Server {
         JsonNode objectNode = objectMapper.readTree(new File(filepath));
         objectMapper.configure(JsonParser.Feature.AUTO_CLOSE_SOURCE, true);
 
-        port = objectNode.get("port").asInt();
+        // TODO SAVE ID port = objectNode.get("port").asInt();
         numberOfUsers = objectNode.get("numberOfUsers").asInt();
         step = objectNode.get("step").asInt();
         maxByzantineUsers = objectNode.get("maxByzantineUsers").asInt();

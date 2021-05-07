@@ -24,8 +24,8 @@ public class HAClient extends AbstractClient {
     private static final String OBTAIN_LOCATION_REPORT = "obtainLocation";
     private static final String OBTAIN_USERS_AT_LOCATION = "obtainUsers";
 
-    public HAClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, boolean isTest, int maxReplicas) throws GeneralSecurityException, JsonProcessingException, InterruptedException {
-        super(serverHost, serverPort, clientId, systemInfo, maxReplicas);
+    public HAClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, boolean isTest, int maxReplicas, int maxByzantineReplicas) throws GeneralSecurityException, JsonProcessingException, InterruptedException {
+        super(serverHost, serverPort, clientId, systemInfo, maxReplicas, maxByzantineReplicas);
         this.setPrivateKey(getPriv("ha-priv.key"));
         checkLatestSeqNumberRegular();
         System.out.println("Seq number: " + getSeqNumber());

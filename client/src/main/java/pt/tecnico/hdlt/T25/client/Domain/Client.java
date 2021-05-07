@@ -34,8 +34,8 @@ public class Client extends AbstractClient {
     private Map<Integer, ProximityServiceGrpc.ProximityServiceStub> proximityServiceStubs;
     private Map<Integer, LocationReport> locationReports;
 
-    public Client(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxByzantineUsers, int maxNearbyByzantineUsers, boolean isTest, int maxReplicas) throws IOException, GeneralSecurityException, InterruptedException {
-        super(serverHost, serverPort, clientId, systemInfo, maxReplicas);
+    public Client(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxByzantineUsers, int maxNearbyByzantineUsers, boolean isTest, int maxReplicas, int maxByzantineReplicas) throws IOException, GeneralSecurityException, InterruptedException {
+        super(serverHost, serverPort, clientId, systemInfo, maxReplicas, maxByzantineReplicas);
         this.maxNearbyByzantineUsers = maxNearbyByzantineUsers;
         this.maxByzantineUsers = maxByzantineUsers;
         this.locationReports = new HashMap<>();

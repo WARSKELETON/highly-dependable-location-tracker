@@ -20,9 +20,9 @@ public class ClientApp {
 			System.out.printf("arg[%d] = %s%n", i, args[i]);
 		}
 
-		if (args.length < 6) {
+		if (args.length < 7) {
 			System.err.println("Argument(s) missing!");
-			System.err.printf("Usage: java %s serverHost serverPort clientId maxByzantineUsers maxNearbyByzantineUsers%n", ClientApp.class.getName());
+			System.err.printf("Usage: java %s serverHost serverPort clientId maxByzantineUsers maxNearbyByzantineUsers maxReplicas maxByzantineReplicas%n", ClientApp.class.getName());
 			return;
 		}
 
@@ -32,19 +32,20 @@ public class ClientApp {
 		final int maxByzantineUsers = Integer.parseInt(args[3]);
 		final int maxNearbyByzantineUsers = Integer.parseInt(args[4]);
 		final int maxReplicas = Integer.parseInt(args[5]);
+		final int maxByzantineReplicas = Integer.parseInt(args[6]);
 
 		ObjectMapper objectMapper = new ObjectMapper();
 		SystemInfo systemInfo = objectMapper.readValue(new File("resources/grid.json"), SystemInfo.class);
 
 		try {
 			if (clientId == -1) {
-				new HAClient(serverHost, serverPort, clientId, systemInfo, false, maxReplicas);
+				new HAClient(serverHost, serverPort, clientId, systemInfo, false, maxReplicas, maxByzantineReplicas);
 			} else {
-				if (args.length == 7 && Boolean.parseBoolean(args[6])) {
+				if (args.length == 8 && Boolean.parseBoolean(args[7])) {
 					System.err.println("I am a byzantine user");
-					new ByzantineClient(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, ByzantineClient.Flavor.CONSPIRATOR, false, maxReplicas);
+					new ByzantineClient(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, ByzantineClient.Flavor.CONSPIRATOR, false, maxReplicas, maxByzantineReplicas);
 				} else {
-					new Client(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, false, maxReplicas);
+					new Client(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, false, maxReplicas, maxByzantineReplicas);
 				}
 			}
 		} catch (JsonProcessingException ex) {
