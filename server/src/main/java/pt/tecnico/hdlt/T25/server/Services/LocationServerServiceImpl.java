@@ -16,7 +16,6 @@ import java.util.logging.Logger;
 public class LocationServerServiceImpl extends LocationServerServiceGrpc.LocationServerServiceImplBase {
 	private static final Logger LOGGER = Logger.getLogger(LocationServerServiceImpl.class.getName());
 	private final Server locationServer;
-	static int count = 0;
 
 	public LocationServerServiceImpl(Server server) {
 		locationServer = server;

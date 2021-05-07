@@ -56,7 +56,7 @@ public class HAClient extends AbstractClient {
             setSeqNumber(currentSeqNumber + 1);
         }
 
-        final CountDownLatch finishLatch = new CountDownLatch(3);
+        final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas())/2 + 1);
 
         Consumer<LocationServer.ObtainUsersAtLocationResponse> requestObserver = new Consumer<>() {
             @Override

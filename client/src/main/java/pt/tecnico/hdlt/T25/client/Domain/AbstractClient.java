@@ -81,6 +81,14 @@ abstract class AbstractClient {
         this.clientId = clientId;
     }
 
+    public int getMaxByzantineReplicas() {
+        return maxByzantineReplicas;
+    }
+
+    public int getMaxReplicas() {
+        return maxReplicas;
+    }
+
     public PrivateKey getPrivateKey() {
         return privateKey;
     }
@@ -172,7 +180,7 @@ abstract class AbstractClient {
 
             // A single illegitimate proof found in the report should invalidate the whole report
             if (!(this.verifyLocationProof(proof, locationProver) && Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(proof.getWitnessId())))) {
-                System.out.println("user" + getClientId() + ": Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+                System.out.println("user" + getClientId() + ": Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
                 return false;
             }
         }
@@ -181,11 +189,10 @@ abstract class AbstractClient {
         String reportContentString = locationProverContent + locationProofsContent.stream().reduce("", String::concat);
         String responseContentString = reportContentString + receivedSeqNumber;
         if (!Crypto.verify(reportContentString, response.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId())) || !Crypto.verify(responseContentString, response.getServerSignature(), this.getServerPublicKey())) {
-            System.out.println("user" + getClientId() + ": Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+            System.out.println("user" + getClientId() + ": Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
             return false;
         }
 
-        System.out.println("user" + getClientId() + ": Legitimate report! User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
         return true;
     }
 
@@ -222,18 +229,18 @@ abstract class AbstractClient {
         LocationServer.ObtainLatestSeqNumberRequest request = buildObtainLatestSeqNumberRequest();
 
         // TODO BYZANTINE QUORUM
-        final CountDownLatch finishLatch = new CountDownLatch(3);
+        final CountDownLatch finishLatch = new CountDownLatch((maxReplicas + maxByzantineReplicas) / 2 + 1);
 
         Consumer<LocationServer.ObtainLatestSeqNumberResponse> requestObserver = new Consumer<>() {
             @Override
-            public void accept(LocationServer.ObtainLatestSeqNumberResponse response)  {
+            public void accept(LocationServer.ObtainLatestSeqNumberResponse response) {
                 synchronized (finishLatch) {
                     if (finishLatch.getCount() == 0) return;
 
                     try {
                         updateSeqNumber(response);
                         finishLatch.countDown();
-                    } catch (JsonProcessingException|GeneralSecurityException ex) {
+                    } catch (JsonProcessingException | GeneralSecurityException ex) {
                         System.err.println("user" + getClientId() + ": caught processing exception while checking sequence number");
                     }
                 }
@@ -247,7 +254,7 @@ abstract class AbstractClient {
         finishLatch.await(10, TimeUnit.SECONDS);
     }
 
-    void checkLatestSeqNumber(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.ObtainLatestSeqNumberRequest request, Consumer<LocationServer.ObtainLatestSeqNumberResponse> callback) {
+    private void checkLatestSeqNumber(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.ObtainLatestSeqNumberRequest request, Consumer<LocationServer.ObtainLatestSeqNumberResponse> callback) {
         try {
             locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).obtainLatestSeqNumber(request, new StreamObserver<>() {
                 @Override
@@ -271,8 +278,120 @@ abstract class AbstractClient {
             }
         }
     }
-    
-    public Location obtainLocationReportAtomic(int userId, int ep) throws GeneralSecurityException, InterruptedException {
+
+    private LocationServer.SubmitLocationReportRequest buildSubmitLocationReportRequestWriteBack(LocationServer.ObtainLocationReportResponse response) throws GeneralSecurityException {
+        List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
+        SecretKeySpec receivedSecretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
+        String locationProverContent = Crypto.decryptAES(receivedSecretKeySpec, response.getLocationProver().getContent());
+
+        byte[] encodedKey = Crypto.generateSecretKey();
+        SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
+
+        for (LocationServer.LocationMessage locationProof : response.getLocationProofsList()) {
+            String locationProofContent = Crypto.decryptAES(receivedSecretKeySpec, locationProof.getContent());
+
+            locationProofMessages.add(
+                    LocationServer.LocationMessage.newBuilder()
+                            .setContent(Crypto.encryptAES(secretKeySpec, locationProofContent))
+                            .setSignature(locationProof.getSignature())
+                            .build()
+            );
+        }
+
+        return LocationServer.SubmitLocationReportRequest.newBuilder()
+                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey()))
+                .setLocationProver(
+                        LocationServer.LocationMessage.newBuilder()
+                                .setContent(Crypto.encryptAES(secretKeySpec, locationProverContent))
+                                .setSignature(response.getLocationProver().getSignature())
+                                .build())
+                .addAllLocationProofs(locationProofMessages)
+                .build();
+    }
+
+    private void writeBackLocationReport(LocationServer.ObtainLocationReportResponse response) throws GeneralSecurityException, JsonProcessingException, InterruptedException {
+
+        final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
+
+        Consumer<LocationServer.SubmitLocationReportResponse> requestOnSuccessObserver = new Consumer<>() {
+            @Override
+            public void accept(LocationServer.SubmitLocationReportResponse response) {
+                synchronized (finishLatch) {
+                    if (finishLatch.getCount() == 0) return;
+                    try {
+                        SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
+                        String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getContent());
+                        if (Crypto.verify(locationProverContent, response.getSignature(), getServerPublicKey())) {
+                            System.out.println("user" + getClientId() + ": " + locationProverContent);
+                            finishLatch.countDown();
+                        }
+                    } catch (GeneralSecurityException ex) {
+                        System.err.println("user" + getClientId() + ": caught processing exception while writing back report");
+                    }
+                }
+            }
+        };
+
+        Consumer<Throwable> requestOnErrorObserver = new Consumer<>() {
+            @Override
+            public void accept(Throwable throwable) {
+                synchronized (finishLatch) {
+                    if (finishLatch.getCount() == 0) return;
+
+                    // TODO IF NOT_FOUND or DUPLICATE decrease finishLatch
+                    finishLatch.countDown();
+                }
+            }
+
+        };
+
+        LocationServer.SubmitLocationReportRequest request = this.buildSubmitLocationReportRequestWriteBack(response);
+        for (int serverId : locationServerServiceStubs.keySet()) {
+            submitLocationReport(locationServerServiceStubs.get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver);
+        }
+
+        finishLatch.await(10, TimeUnit.SECONDS);
+
+        if (finishLatch.getCount() == 0) {
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
+            String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getLocationProver().getContent());
+            Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
+            System.out.println("user" + getClientId() + ": Legitimate report! User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
+        } else {
+            writeBackLocationReport(response);
+        }
+    }
+
+    public void submitLocationReport(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.SubmitLocationReportRequest request, Consumer<LocationServer.SubmitLocationReportResponse> callbackOnSuccess, Consumer<Throwable> callbackOnError) {
+        try {
+            locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).submitLocationReport(request, new StreamObserver<>() {
+                @Override
+                public void onNext(LocationServer.SubmitLocationReportResponse response) {
+                    callbackOnSuccess.accept(response);
+                }
+
+                @Override
+                public void onError(Throwable t) {
+                    callbackOnError.accept(t);
+                }
+
+                @Override
+                public void onCompleted() {
+                }
+            });
+        } catch (StatusRuntimeException e) {
+            if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
+                System.out.println("user" + getClientId() + ": TIMEOUT CLIENT");
+            } else {
+                throw e;
+            }
+        }
+    }
+
+    public Location obtainLocationReportAtomic(int userId, int ep) throws GeneralSecurityException, InterruptedException, JsonProcessingException {
+        List<LocationServer.ObtainLocationReportResponse> reportResponses = new ArrayList<>();
         List<Location> locations = new ArrayList<>();
         int currentSeqNumber;
         synchronized (seqNumberLock) {
@@ -280,11 +399,11 @@ abstract class AbstractClient {
             this.seqNumber += 1;
         }
 
-        final CountDownLatch finishLatch = new CountDownLatch(3);
+        final CountDownLatch finishLatch = new CountDownLatch(1);
 
         Consumer<LocationServer.ObtainLocationReportResponse> requestObserver = new Consumer<>() {
             @Override
-            public void accept(LocationServer.ObtainLocationReportResponse response)  {
+            public void accept(LocationServer.ObtainLocationReportResponse response) {
                 synchronized (finishLatch) {
                     if (finishLatch.getCount() == 0) return;
 
@@ -295,9 +414,10 @@ abstract class AbstractClient {
                             SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
                             String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getLocationProver().getContent());
                             locations.add(objectMapper.readValue(locationProverContent, Location.class));
+                            reportResponses.add(response);
                             finishLatch.countDown();
                         }
-                    } catch (JsonProcessingException|GeneralSecurityException ex) {
+                    } catch (JsonProcessingException | GeneralSecurityException ex) {
                         System.err.println("user" + getClientId() + ": caught processing exception while obtaining report");
                     }
                 }
@@ -310,6 +430,13 @@ abstract class AbstractClient {
         }
 
         finishLatch.await(10, TimeUnit.SECONDS);
+
+        if (finishLatch.getCount() == 0) {
+            writeBackLocationReport(reportResponses.get(0));
+        } else {
+            // TODO Check NOT_FOUND infinite loop
+            obtainLocationReportAtomic(userId, ep);
+        }
 
         return locations.get(0);
     }
@@ -389,7 +516,7 @@ abstract class AbstractClient {
 
                 this.parseCommand(line);
             }
-        } catch(Exception e2) {
+        } catch (Exception e2) {
             Logger.getLogger(Client.class.getName()).log(Level.WARNING, e2.getMessage(), e2);
             Thread.currentThread().interrupt();
         } finally {

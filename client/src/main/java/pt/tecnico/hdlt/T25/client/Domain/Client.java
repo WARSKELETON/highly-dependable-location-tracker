@@ -233,12 +233,12 @@ public class Client extends AbstractClient {
                 .build();
     }
 
-    public void submitLocationReportAtomic(int ep) throws InterruptedException, GeneralSecurityException, JsonProcessingException {
+    public void submitLocationReportAtomic(int ep) throws InterruptedException, GeneralSecurityException {
         LocationServer.SubmitLocationReportRequest request = buildSubmitLocationReportRequest(ep);
 
-        final CountDownLatch finishLatch = new CountDownLatch(3);
+        final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas())/2 + 1);
 
-        Consumer<LocationServer.SubmitLocationReportResponse> requestObserver = new Consumer<>() {
+        Consumer<LocationServer.SubmitLocationReportResponse> requestOnSuccessObserver = new Consumer<>() {
             @Override
             public void accept(LocationServer.SubmitLocationReportResponse response)  {
                 synchronized (finishLatch) {
@@ -258,36 +258,20 @@ public class Client extends AbstractClient {
             }
         };
 
+        Consumer<Throwable> requestOnErrorObserver = new Consumer<>() {
+            @Override
+            public void accept(Throwable throwable)  {
+                synchronized (finishLatch) {
+                    finishLatch.countDown();
+                }
+            }
+        };
+
         for (int serverId : getLocationServerServiceStub().keySet()) {
-            submitLocationReport(getLocationServerServiceStub().get(serverId), request, requestObserver);
+            submitLocationReport(getLocationServerServiceStub().get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver);
         }
 
         finishLatch.await(10, TimeUnit.SECONDS);
-    }
-
-    public void submitLocationReport(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.SubmitLocationReportRequest request, Consumer<LocationServer.SubmitLocationReportResponse> callback) {
-        try {
-            locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).submitLocationReport(request, new StreamObserver<>() {
-                @Override
-                public void onNext(LocationServer.SubmitLocationReportResponse response) {
-                    callback.accept(response);
-                }
-
-                @Override
-                public void onError(Throwable t) {
-                }
-
-                @Override
-                public void onCompleted() {
-                }
-            });
-        } catch (StatusRuntimeException e) {
-            if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
-                System.out.println("user" + getClientId() + ": TIMEOUT CLIENT");
-            } else {
-                throw e;
-            }
-        }
     }
 
     @Override
