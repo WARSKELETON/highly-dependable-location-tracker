@@ -37,7 +37,7 @@ public class TestBase {
             System.out.println(msg);
             throw e;
         }
-
+/*
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             systemInfo = objectMapper.readValue(TestBase.class.getResourceAsStream(TEST_GRID_FILE), SystemInfo.class);
@@ -75,7 +75,7 @@ public class TestBase {
                     clients.put(i, new Client(serverHost, serverPort, i, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, true));
                 }
             }
-        }
+        }*/
 
         catch (Exception e) {
             System.out.println(e.getMessage());

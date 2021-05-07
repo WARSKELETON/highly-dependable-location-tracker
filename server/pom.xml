@@ -26,7 +26,7 @@
 		<!-- application properties -->
 		<mainclass>pt.tecnico.hdlt.T25.server.ServerApp</mainclass>
 
-		<server.port>8080</server.port>
+		<server.id>0</server.id>
 		<numberOfUsers>50</numberOfUsers>
 		<step>50</step>
 		<maxByzantineUsers>10</maxByzantineUsers>
@@ -88,7 +88,7 @@
 				<configuration>
 					<mainClass>${mainclass}</mainClass>
 					<arguments>
-						<argument>${server.port}</argument>
+						<argument>${server.id}</argument>
 						<argument>${numberOfUsers}</argument>
 						<argument>${step}</argument>
 						<argument>${maxByzantineUsers}</argument>

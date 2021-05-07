@@ -5,8 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.StatusRuntimeException;
+import io.grpc.stub.StreamObserver;
 import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.LocationServerServiceGrpc;
+import pt.tecnico.hdlt.T25.Proximity;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
 import javax.crypto.spec.SecretKeySpec;
@@ -14,34 +16,41 @@ import java.security.GeneralSecurityException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import static io.grpc.Status.DEADLINE_EXCEEDED;
 
 abstract class AbstractClient {
+    private static final int SERVER_ORIGINAL_PORT = 8080;
+
     private String serverHost;
     private int serverPort;
     private int clientId;
     private int seqNumber;
+    private int maxReplicas;
     private PrivateKey privateKey;
     private PublicKey serverPublicKey;
     private Map<Integer, PublicKey> publicKeys;
     private SystemInfo systemInfo;
     private final Object seqNumberLock = new Object();
-    private LocationServerServiceGrpc.LocationServerServiceBlockingStub locationServerServiceStub;
+    private Map<Integer, LocationServerServiceGrpc.LocationServerServiceStub> locationServerServiceStubs;
 
-    AbstractClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo) throws GeneralSecurityException, JsonProcessingException {
+    AbstractClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxReplicas) throws GeneralSecurityException, JsonProcessingException {
         this.serverHost = serverHost;
         this.serverPort = serverPort;
         this.clientId = clientId;
         this.systemInfo = systemInfo;
+        this.maxReplicas = maxReplicas;
         this.seqNumber = 0;
         this.publicKeys = new HashMap<>();
+        this.locationServerServiceStubs = new HashMap<>();
         this.serverPublicKey = Crypto.getPub("server-pub.key");
-        this.connectToServer();
+        this.connectToServers();
         this.loadPublicKeys();
         this.updateEpochs();
     }
@@ -114,18 +123,17 @@ abstract class AbstractClient {
         return seqNumberLock;
     }
 
-    public LocationServerServiceGrpc.LocationServerServiceBlockingStub getLocationServerServiceStub() {
-        return locationServerServiceStub;
+    public Map<Integer, LocationServerServiceGrpc.LocationServerServiceStub> getLocationServerServiceStub() {
+        return locationServerServiceStubs;
     }
 
-    void setLocationServerServiceStub(LocationServerServiceGrpc.LocationServerServiceBlockingStub locationServerServiceStub) {
-        this.locationServerServiceStub = locationServerServiceStub;
-    }
-
-    private void connectToServer() {
-        String target = serverHost + ":" + serverPort;
-        final ManagedChannel channel = ManagedChannelBuilder.forTarget(target).usePlaintext().build();
-        locationServerServiceStub = LocationServerServiceGrpc.newBlockingStub(channel);
+    private void connectToServers() {
+        for (int i = 0; i < maxReplicas; i++) {
+            int port = SERVER_ORIGINAL_PORT + i;
+            String target = serverHost + ":" + port;
+            final ManagedChannel channel = ManagedChannelBuilder.forTarget(target).usePlaintext().build();
+            locationServerServiceStubs.put(i, LocationServerServiceGrpc.newStub(channel));
+        }
     }
 
     boolean isNearby(double latitude1, double longitude1, double latitude2, double longitude2) {
@@ -195,68 +203,139 @@ abstract class AbstractClient {
         this.seqNumber = seqNumber;
     }
 
-    void checkLatestSeqNumber() throws GeneralSecurityException, JsonProcessingException {
+    private LocationServer.ObtainLatestSeqNumberRequest buildObtainLatestSeqNumberRequest() throws GeneralSecurityException {
         String requestContent = Integer.toString(clientId);
 
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
 
-        LocationServer.ObtainLatestSeqNumberRequest request = LocationServer.ObtainLatestSeqNumberRequest.newBuilder()
+        return LocationServer.ObtainLatestSeqNumberRequest.newBuilder()
                 .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.serverPublicKey))
                 .setContent(Crypto.encryptAES(secretKeySpec, requestContent))
                 .setSignature(Crypto.sign(requestContent, this.privateKey))
                 .build();
+    }
 
-        LocationServer.ObtainLatestSeqNumberResponse response;
+    public void checkLatestSeqNumberRegular() throws GeneralSecurityException, InterruptedException {
+        LocationServer.ObtainLatestSeqNumberRequest request = buildObtainLatestSeqNumberRequest();
+
+        System.out.println("CONAAAAAAAAAA");
+        // TODO BYZANTINE QUORUM
+        final CountDownLatch finishLatch = new CountDownLatch(3);
+
+        Consumer<LocationServer.ObtainLatestSeqNumberResponse> requestObserver = new Consumer<>() {
+            @Override
+            public void accept(LocationServer.ObtainLatestSeqNumberResponse response)  {
+                synchronized (finishLatch) {
+                    if (finishLatch.getCount() == 0) return;
+
+                    try {
+                        updateSeqNumber(response);
+                        finishLatch.countDown();
+                    } catch (JsonProcessingException|GeneralSecurityException ex) {
+                        System.err.println("user" + getClientId() + ": caught processing exception while checking sequence number");
+                    }
+                }
+            }
+        };
+
+        for (int serverId : locationServerServiceStubs.keySet()) {
+            checkLatestSeqNumber(locationServerServiceStubs.get(serverId), request, requestObserver);
+        }
+
+        finishLatch.await(10, TimeUnit.SECONDS);
+    }
+
+    void checkLatestSeqNumber(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.ObtainLatestSeqNumberRequest request, Consumer<LocationServer.ObtainLatestSeqNumberResponse> callback) {
         try {
-            response = locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).obtainLatestSeqNumber(request);
+            locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).obtainLatestSeqNumber(request, new StreamObserver<>() {
+                @Override
+                public void onNext(LocationServer.ObtainLatestSeqNumberResponse response) {
+                    callback.accept(response);
+                }
+
+                @Override
+                public void onError(Throwable t) {
+                }
+
+                @Override
+                public void onCompleted() {
+                }
+            });
         } catch (StatusRuntimeException e) {
             if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
                 System.out.println("user" + getClientId() + ": TIMEOUT CLIENT");
-                checkLatestSeqNumber();
-                return;
             } else {
                 throw e;
             }
         }
-
-        if (response != null) {
-            updateSeqNumber(response);
-        }
     }
-
-    public Location obtainLocationReport(int userId, int ep) throws JsonProcessingException, GeneralSecurityException {
+    
+    public Location obtainLocationReportAtomic(int userId, int ep) throws GeneralSecurityException, InterruptedException {
+        List<Location> locations = new ArrayList<>();
         int currentSeqNumber;
         synchronized (seqNumberLock) {
             currentSeqNumber = this.seqNumber;
             this.seqNumber += 1;
         }
 
-        LocationServer.ObtainLocationReportResponse response;
+        final CountDownLatch finishLatch = new CountDownLatch(3);
 
-        while (true) {
-            LocationServer.ObtainLocationReportRequest request = this.buildObtainLocationReportRequest(userId, ep, currentSeqNumber);
+        Consumer<LocationServer.ObtainLocationReportResponse> requestObserver = new Consumer<>() {
+            @Override
+            public void accept(LocationServer.ObtainLocationReportResponse response)  {
+                synchronized (finishLatch) {
+                    if (finishLatch.getCount() == 0) return;
 
-            try {
-                response = locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).obtainLocationReport(request);
-                break;
-            } catch (StatusRuntimeException e) {
-                if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
-                    System.out.println("user" + getClientId() + ": TIMEOUT CLIENT");
-                } else {
-                    throw e;
+                    try {
+                        if (response != null && verifyLocationReport(response, currentSeqNumber)) {
+                            ObjectMapper objectMapper = new ObjectMapper();
+
+                            SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
+                            String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getLocationProver().getContent());
+                            locations.add(objectMapper.readValue(locationProverContent, Location.class));
+                            finishLatch.countDown();
+                        }
+                    } catch (JsonProcessingException|GeneralSecurityException ex) {
+                        System.err.println("user" + getClientId() + ": caught processing exception while obtaining report");
+                    }
                 }
             }
+        };
+
+        LocationServer.ObtainLocationReportRequest request = this.buildObtainLocationReportRequest(userId, ep, currentSeqNumber);
+        for (int serverId : locationServerServiceStubs.keySet()) {
+            obtainLocationReport(locationServerServiceStubs.get(serverId), request, requestObserver);
         }
 
-        if (response != null && verifyLocationReport(response, currentSeqNumber)) {
-            ObjectMapper objectMapper = new ObjectMapper();
+        finishLatch.await(10, TimeUnit.SECONDS);
 
-            SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), this.privateKey);
-            String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getLocationProver().getContent());
-            return objectMapper.readValue(locationProverContent, Location.class);
+        return locations.get(0);
+    }
+
+    public void obtainLocationReport(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.ObtainLocationReportRequest request, Consumer<LocationServer.ObtainLocationReportResponse> callback) {
+        try {
+            locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).obtainLocationReport(request, new StreamObserver<>() {
+                @Override
+                public void onNext(LocationServer.ObtainLocationReportResponse response) {
+                    callback.accept(response);
+                }
+
+                @Override
+                public void onError(Throwable t) {
+                }
+
+                @Override
+                public void onCompleted() {
+                }
+            });
+        } catch (StatusRuntimeException e) {
+            if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
+                System.out.println("user" + getClientId() + ": TIMEOUT CLIENT");
+            } else {
+                throw e;
+            }
         }
-        return null;
     }
 
     public LocationServer.ObtainLocationReportRequest buildObtainLocationReportRequest(int userId, int ep, int currentSeqNumber) throws GeneralSecurityException {

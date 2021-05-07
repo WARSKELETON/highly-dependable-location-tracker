@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.*;
 import io.grpc.stub.StreamObserver;
 import pt.tecnico.hdlt.T25.LocationServer;
+import pt.tecnico.hdlt.T25.LocationServerServiceGrpc;
 import pt.tecnico.hdlt.T25.Proximity;
 import pt.tecnico.hdlt.T25.ProximityServiceGrpc;
 import pt.tecnico.hdlt.T25.client.Services.ProximityServiceImpl;
@@ -33,15 +34,15 @@ public class Client extends AbstractClient {
     private Map<Integer, ProximityServiceGrpc.ProximityServiceStub> proximityServiceStubs;
     private Map<Integer, LocationReport> locationReports;
 
-    public Client(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxByzantineUsers, int maxNearbyByzantineUsers, boolean isTest) throws IOException, GeneralSecurityException {
-        super(serverHost, serverPort, clientId, systemInfo);
+    public Client(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxByzantineUsers, int maxNearbyByzantineUsers, boolean isTest, int maxReplicas) throws IOException, GeneralSecurityException, InterruptedException {
+        super(serverHost, serverPort, clientId, systemInfo, maxReplicas);
         this.maxNearbyByzantineUsers = maxNearbyByzantineUsers;
         this.maxByzantineUsers = maxByzantineUsers;
         this.locationReports = new HashMap<>();
         this.proximityServiceStubs = new HashMap<>();
         this.connectToClients();
         this.setPrivateKey(getPriv("client" + clientId + "-priv.key"));
-        checkLatestSeqNumber();
+        checkLatestSeqNumberRegular();
         System.out.println("Seq number: " + getSeqNumber());
         if (!isTest) this.eventLoop();
     }
@@ -196,12 +197,13 @@ public class Client extends AbstractClient {
         }
     }
 
-    public void submitLocationReport(int ep) throws InterruptedException, GeneralSecurityException {
+    public LocationServer.SubmitLocationReportRequest buildSubmitLocationReportRequest(int ep) throws InterruptedException, GeneralSecurityException {
         LocationReport locationReport = locationReports.get(ep);
         Location myLocation = this.getMyLocation(ep);
 
         if (locationReport == null) {
-            if (!createLocationReport(getClientId(), ep, myLocation.getLatitude(), myLocation.getLongitude())) return;
+            // TODO returning null
+            if (!createLocationReport(getClientId(), ep, myLocation.getLatitude(), myLocation.getLongitude())) return null;
             locationReport = locationReports.get(ep);
         }
 
@@ -220,7 +222,7 @@ public class Client extends AbstractClient {
 
         String content = locationReport.getLocationProver().toJsonString();
 
-        LocationServer.SubmitLocationReportRequest request = LocationServer.SubmitLocationReportRequest.newBuilder()
+        return LocationServer.SubmitLocationReportRequest.newBuilder()
                 .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey()))
                 .setLocationProver(
                         LocationServer.LocationMessage.newBuilder()
@@ -229,24 +231,63 @@ public class Client extends AbstractClient {
                                 .build())
                 .addAllLocationProofs(locationProofMessages)
                 .build();
+    }
 
-        LocationServer.SubmitLocationReportResponse response;
+    public void submitLocationReportAtomic(int ep) throws InterruptedException, GeneralSecurityException, JsonProcessingException {
+        LocationServer.SubmitLocationReportRequest request = buildSubmitLocationReportRequest(ep);
+
+        final CountDownLatch finishLatch = new CountDownLatch(3);
+
+        Consumer<LocationServer.SubmitLocationReportResponse> requestObserver = new Consumer<>() {
+            @Override
+            public void accept(LocationServer.SubmitLocationReportResponse response)  {
+                synchronized (finishLatch) {
+                    if (finishLatch.getCount() == 0) return;
+
+                    try {
+                        SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
+                        String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getContent());
+                        if (Crypto.verify(locationProverContent, response.getSignature(), getServerPublicKey())) {
+                            System.out.println("user" + getClientId() + ": " + locationProverContent);
+                            finishLatch.countDown();
+                        }
+                    } catch (GeneralSecurityException ex) {
+                        System.err.println("user" + getClientId() + ": caught processing exception while submitting report");
+                    }
+                }
+            }
+        };
+
+        for (int serverId : getLocationServerServiceStub().keySet()) {
+            submitLocationReport(getLocationServerServiceStub().get(serverId), request, requestObserver);
+        }
+
+        finishLatch.await(10, TimeUnit.SECONDS);
+    }
+
+    public void submitLocationReport(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.SubmitLocationReportRequest request, Consumer<LocationServer.SubmitLocationReportResponse> callback) {
         try {
-            response = getLocationServerServiceStub().withDeadlineAfter(1, TimeUnit.SECONDS).submitLocationReport(request);
+            locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).submitLocationReport(request, new StreamObserver<>() {
+                @Override
+                public void onNext(LocationServer.SubmitLocationReportResponse response) {
+                    callback.accept(response);
+                }
+
+                @Override
+                public void onError(Throwable t) {
+                }
+
+                @Override
+                public void onCompleted() {
+                }
+            });
         } catch (StatusRuntimeException e) {
             if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
                 System.out.println("user" + getClientId() + ": TIMEOUT CLIENT");
-                submitLocationReport(ep);
-                return;
             } else {
                 throw e;
             }
         }
-
-        secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), this.getPrivateKey());
-        String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getContent());
-        if (Crypto.verify(locationProverContent, response.getSignature(), this.getServerPublicKey()))
-            System.out.println("user" + getClientId() + ": " + locationProverContent);
     }
 
     @Override
@@ -268,12 +309,12 @@ public class Client extends AbstractClient {
                 }
                 case SUBMIT_LOCATION_REPORT: {
                     int ep = Integer.parseInt(args[1]);
-                    submitLocationReport(ep);
+                    submitLocationReportAtomic(ep);
                     break;
                 }
                 case OBTAIN_LOCATION_REPORT: {
                     int ep = Integer.parseInt(args[1]);
-                    obtainLocationReport(this.getClientId(), ep);
+                    obtainLocationReportAtomic(this.getClientId(), ep);
                     break;
                 }
                 default:

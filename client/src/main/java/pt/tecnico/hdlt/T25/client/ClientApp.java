@@ -20,7 +20,7 @@ public class ClientApp {
 			System.out.printf("arg[%d] = %s%n", i, args[i]);
 		}
 
-		if (args.length < 5) {
+		if (args.length < 6) {
 			System.err.println("Argument(s) missing!");
 			System.err.printf("Usage: java %s serverHost serverPort clientId maxByzantineUsers maxNearbyByzantineUsers%n", ClientApp.class.getName());
 			return;
@@ -31,19 +31,20 @@ public class ClientApp {
 		final int clientId = Integer.parseInt(args[2]);
 		final int maxByzantineUsers = Integer.parseInt(args[3]);
 		final int maxNearbyByzantineUsers = Integer.parseInt(args[4]);
+		final int maxReplicas = Integer.parseInt(args[5]);
 
 		ObjectMapper objectMapper = new ObjectMapper();
 		SystemInfo systemInfo = objectMapper.readValue(new File("resources/grid.json"), SystemInfo.class);
 
 		try {
 			if (clientId == -1) {
-				new HAClient(serverHost, serverPort, clientId, systemInfo, false);
+				new HAClient(serverHost, serverPort, clientId, systemInfo, false, maxReplicas);
 			} else {
-				if (args.length == 6 && Boolean.parseBoolean(args[5])) {
+				if (args.length == 7 && Boolean.parseBoolean(args[6])) {
 					System.err.println("I am a byzantine user");
-					new ByzantineClient(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, ByzantineClient.Flavor.CONSPIRATOR, false);
+					new ByzantineClient(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, ByzantineClient.Flavor.CONSPIRATOR, false, maxReplicas);
 				} else {
-					new Client(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, false);
+					new Client(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, false, maxReplicas);
 				}
 			}
 		} catch (JsonProcessingException ex) {

@@ -20,18 +20,18 @@ public class ServerApp {
 
 		if (args.length < 5) {
 			System.err.println("Argument(s) missing!");
-			System.err.printf("Usage: java %s port numberOfUsers step maxByzantineUsers maxNearbyByzantineUsers%n", io.grpc.Server.class.getName());
+			System.err.printf("Usage: java %s serverId numberOfUsers step maxByzantineUsers maxNearbyByzantineUsers%n", io.grpc.Server.class.getName());
 			return;
 		}
 
-		final int port = Integer.parseInt(args[0]);
+		final int serverId = Integer.parseInt(args[0]);
 		final int numberOfUsers = Integer.parseInt(args[1]);
 		final int step = Integer.parseInt(args[2]);
 		final int maxByzantineUsers = Integer.parseInt(args[3]);
 		final int maxNearbyByzantineUsers = Integer.parseInt(args[4]);
 
 		try {
-			new Server(port, numberOfUsers, step, maxByzantineUsers, maxNearbyByzantineUsers);
+			new Server(serverId, numberOfUsers, step, maxByzantineUsers, maxNearbyByzantineUsers);
 		} catch (IOException ex) {
 			System.err.println("Server crashed due to some internal error.");
 		} catch (GeneralSecurityException ex2) {

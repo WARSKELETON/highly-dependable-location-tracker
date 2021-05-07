@@ -3,7 +3,9 @@ package pt.tecnico.hdlt.T25.client.Domain;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.StatusRuntimeException;
+import io.grpc.stub.StreamObserver;
 import pt.tecnico.hdlt.T25.LocationServer;
+import pt.tecnico.hdlt.T25.LocationServerServiceGrpc;
 import pt.tecnico.hdlt.T25.Proximity;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
@@ -14,7 +16,6 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 import static io.grpc.Status.DEADLINE_EXCEEDED;
 
@@ -30,8 +31,8 @@ public class ByzantineClient extends Client {
 
     private Flavor flavor;
 
-    public ByzantineClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxByzantineUsers, int maxNearbyByzantineUsers, Flavor flavor, boolean isTest) throws IOException, GeneralSecurityException {
-        super(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, isTest);
+    public ByzantineClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxByzantineUsers, int maxNearbyByzantineUsers, Flavor flavor, boolean isTest, int maxReplicas) throws IOException, GeneralSecurityException, InterruptedException {
+        super(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, isTest, maxReplicas);
         this.flavor = flavor;
     }
 
@@ -43,13 +44,7 @@ public class ByzantineClient extends Client {
         this.flavor = flavor;
     }
 
-    public void obtainUsersAtLocation(int latitude, int longitude, int ep) throws JsonProcessingException, GeneralSecurityException {
-        int currentSeqNumber;
-        synchronized (getSeqNumberLock()) {
-            currentSeqNumber = this.getSeqNumber();
-            setSeqNumber(currentSeqNumber + 1);
-        }
-
+    public LocationServer.ObtainUsersAtLocationRequest buildObtainUsersAtLocationRequest(int latitude, int longitude, int ep, int currentSeqNumber) throws JsonProcessingException, GeneralSecurityException {
         Location usersLocationRequest = new Location(-1, ep, latitude, longitude);
         String requestContent = usersLocationRequest.toJsonString();
         String signatureString = requestContent + currentSeqNumber;
@@ -57,29 +52,79 @@ public class ByzantineClient extends Client {
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
 
-        LocationServer.ObtainUsersAtLocationRequest request = LocationServer.ObtainUsersAtLocationRequest.newBuilder()
+        return LocationServer.ObtainUsersAtLocationRequest.newBuilder()
                 .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey()))
                 .setContent(Crypto.encryptAES(secretKeySpec, requestContent))
                 .setSignature(Crypto.sign(signatureString, this.getPrivateKey()))
                 .setSeqNumber(Crypto.encryptAES(secretKeySpec, String.valueOf(currentSeqNumber)))
                 .build();
+    }
 
-        List<LocationServer.ObtainLocationReportResponse> reports;
-        while (true) {
-            try {
-                reports = this.getLocationServerServiceStub().withDeadlineAfter(1, TimeUnit.SECONDS).obtainUsersAtLocation(request).getLocationReportsList();
-                break;
-            } catch (StatusRuntimeException e) {
-                if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
-                    System.out.println("user" + getClientId() + ": TIMEOUT CLIENT");
-                } else {
-                    throw e;
-                }
-            }
+    public List<Location> obtainUsersAtLocationRegular(int latitude, int longitude, int ep) throws JsonProcessingException, GeneralSecurityException, InterruptedException {
+        List<Location> locations = new ArrayList<>();
+        int currentSeqNumber;
+        synchronized (getSeqNumberLock()) {
+            currentSeqNumber = this.getSeqNumber();
+            setSeqNumber(currentSeqNumber + 1);
         }
 
-        for (LocationServer.ObtainLocationReportResponse report : reports) {
-            verifyLocationReport(report, currentSeqNumber);
+        final CountDownLatch finishLatch = new CountDownLatch(3);
+
+        Consumer<LocationServer.ObtainUsersAtLocationResponse> requestObserver = new Consumer<>() {
+            @Override
+            public void accept(LocationServer.ObtainUsersAtLocationResponse response)  {
+                synchronized (finishLatch) {
+                    if (finishLatch.getCount() == 0) return;
+
+                    try {
+                        ObjectMapper objectMapper = new ObjectMapper();
+                        for (LocationServer.ObtainLocationReportResponse report : response.getLocationReportsList()) {
+                            if (verifyLocationReport(report, currentSeqNumber)) {
+                                SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(report.getKey(), getPrivateKey());
+                                String locationProverContent = Crypto.decryptAES(secretKeySpec, report.getLocationProver().getContent());
+                                locations.add(objectMapper.readValue(locationProverContent, Location.class));
+                            }
+                        }
+                        finishLatch.countDown();
+                    } catch (JsonProcessingException|GeneralSecurityException ex) {
+                        System.err.println("user" + getClientId() + ": caught processing exception while obtaining users at location");
+                    }
+                }
+            }
+        };
+
+        LocationServer.ObtainUsersAtLocationRequest request = buildObtainUsersAtLocationRequest(latitude, longitude, ep, currentSeqNumber);
+        for (int serverId : getLocationServerServiceStub().keySet()) {
+            obtainUsersAtLocation(getLocationServerServiceStub().get(serverId), request, requestObserver);
+        }
+
+        finishLatch.await(10, TimeUnit.SECONDS);
+
+        return locations;
+    }
+
+    public void obtainUsersAtLocation(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.ObtainUsersAtLocationRequest request, Consumer<LocationServer.ObtainUsersAtLocationResponse> callback) {
+        try {
+            locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).obtainUsersAtLocation(request, new StreamObserver<>() {
+                @Override
+                public void onNext(LocationServer.ObtainUsersAtLocationResponse response) {
+                    callback.accept(response);
+                }
+
+                @Override
+                public void onError(Throwable t) {
+                }
+
+                @Override
+                public void onCompleted() {
+                }
+            });
+        } catch (StatusRuntimeException e) {
+            if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
+                System.out.println("user" + getClientId() + ": TIMEOUT CLIENT");
+            } else {
+                throw e;
+            }
         }
     }
 
@@ -266,12 +311,12 @@ public class ByzantineClient extends Client {
                 }
                 case SUBMIT_LOCATION_REPORT: {
                     int ep = Integer.parseInt(args[1]);
-                    submitLocationReport(ep);
+                    submitLocationReportAtomic(ep);
                     break;
                 }
                 case OBTAIN_LOCATION_REPORT: {
                     int ep = Integer.parseInt(args[1]);
-                    obtainLocationReport(this.getClientId(), ep);
+                    obtainLocationReportAtomic(this.getClientId(), ep);
                     break;
                 }
                 default:

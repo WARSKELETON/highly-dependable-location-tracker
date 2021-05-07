@@ -27,6 +27,9 @@ import static pt.tecnico.hdlt.T25.server.ServerApp.BACKUP_RECOVERY_FILE_PATH;
 import static pt.tecnico.hdlt.T25.server.ServerApp.SERVER_RECOVERY_FILE_PATH;
 
 public class Server {
+    private static final int SERVER_ORIGINAL_PORT = 8080;
+
+    private int id;
     private int port;
     private int numberOfUsers;
     private int step;
@@ -39,8 +42,9 @@ public class Server {
     private Map<Integer, PublicKey> clientPublicKeys;
     private Map<Pair<Integer, Integer>, LocationReport> locationReports; // <UserId, Epoch> to Location Report
 
-    public Server(int port, int numberOfUsers, int step, int maxByzantineUsers, int maxNearbyByzantineUsers) throws IOException, GeneralSecurityException, InterruptedException {
-        this.port = port;
+    public Server(int serverId, int numberOfUsers, int step, int maxByzantineUsers, int maxNearbyByzantineUsers) throws IOException, GeneralSecurityException, InterruptedException {
+        this.id = serverId;
+        this.port = SERVER_ORIGINAL_PORT + serverId;
         this.numberOfUsers = numberOfUsers;
         this.step = step;
         this.maxByzantineUsers = maxByzantineUsers;

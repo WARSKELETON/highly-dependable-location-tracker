@@ -1,6 +1,5 @@
 package pt.tecnico.hdlt.T25.server.Services;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import io.grpc.Context;
 import io.grpc.Status;
 import pt.tecnico.hdlt.T25.LocationServer;
