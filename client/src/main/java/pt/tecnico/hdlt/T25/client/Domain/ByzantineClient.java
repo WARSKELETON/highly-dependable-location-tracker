@@ -62,7 +62,6 @@ public class ByzantineClient extends Client {
 
     public List<Location> obtainUsersAtLocationRegular(int latitude, int longitude, int ep) throws JsonProcessingException, GeneralSecurityException, InterruptedException {
         List<Location> locations = new ArrayList<>();
-        Map<Integer, Integer> currentSeqNumbers = new HashMap<>();
 
         final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas())/2 + 1);
 
@@ -75,7 +74,7 @@ public class ByzantineClient extends Client {
                     try {
                         ObjectMapper objectMapper = new ObjectMapper();
                         for (LocationServer.ObtainLocationReportResponse report : response.getLocationReportsList()) {
-                            if (verifyLocationReport(report, currentSeqNumbers)) {
+                            if (verifyLocationReport(report)) {
                                 SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(report.getKey(), getPrivateKey());
                                 String locationProverContent = Crypto.decryptAES(secretKeySpec, report.getLocationProver().getContent());
                                 locations.add(objectMapper.readValue(locationProverContent, Location.class));
@@ -90,18 +89,7 @@ public class ByzantineClient extends Client {
         };
 
         for (int serverId : getLocationServerServiceStub().keySet()) {
-            Integer key = null;
-            for (Integer seqNumberKey : getSeqNumbers().keySet()) {
-                if (seqNumberKey == serverId) {
-                    key = seqNumberKey;
-                }
-            }
-            synchronized (Objects.requireNonNull(key)) {
-                int currentSeqNumber = getSeqNumbers().get(key);
-                currentSeqNumbers.put(key, currentSeqNumber);
-                getSeqNumbers().put(key, currentSeqNumber + 1);
-            }
-            LocationServer.ObtainUsersAtLocationRequest request = buildObtainUsersAtLocationRequest(latitude, longitude, ep, currentSeqNumbers.get(key));
+            LocationServer.ObtainUsersAtLocationRequest request = buildObtainUsersAtLocationRequest(latitude, longitude, ep, this.getSeqNumbers().get(serverId));
             obtainUsersAtLocation(getLocationServerServiceStub().get(serverId), request, requestObserver);
         }
 

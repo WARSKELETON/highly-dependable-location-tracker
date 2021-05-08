@@ -160,7 +160,7 @@ abstract class AbstractClient {
                 proof.getLongitude() == locationProver.getLongitude();
     }
 
-    boolean verifyLocationReport(LocationServer.ObtainLocationReportResponse response, Map<Integer, Integer> currentSeqNumbers) throws JsonProcessingException, GeneralSecurityException {
+    boolean verifyLocationReport(int userId, int ep, LocationServer.ObtainLocationReportResponse response) throws JsonProcessingException, GeneralSecurityException {
         List<Integer> witnessIds = new ArrayList<>();
         ObjectMapper objectMapper = new ObjectMapper();
 
@@ -170,9 +170,14 @@ abstract class AbstractClient {
         String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getLocationProver().getContent());
         int receivedSeqNumber = Integer.parseInt(Crypto.decryptAES(secretKeySpec, response.getSeqNumber()));
         int serverId = Integer.parseInt(Crypto.decryptAES(secretKeySpec, response.getServerId()));
-        int currentSeqNumber = currentSeqNumbers.get(serverId);
+        int currentSeqNumber = this.seqNumbers.get(serverId);
         Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
         List<String> locationProofsContent = new ArrayList<>();
+
+        if (locationProver.getEp() != ep || locationProver.getUserId() != userId) {
+            System.out.println("user" + getClientId() + ": Server should not be trusted! Received invalid report, either from a different user or different epoch");
+            return false;
+        }
 
         if (receivedSeqNumber != currentSeqNumber + 1) {
             System.out.println("user" + getClientId() + ": Server should not be trusted! Received sequence number " + receivedSeqNumber + " but expected " + currentSeqNumber);
@@ -207,6 +212,7 @@ abstract class AbstractClient {
             return false;
         }
 
+        this.seqNumbers.put(serverId, currentSeqNumber + 1);
         return true;
     }
 
@@ -339,6 +345,7 @@ abstract class AbstractClient {
             public void accept(LocationServer.SubmitLocationReportResponse response) {
                 synchronized (finishLatch) {
                     if (finishLatch.getCount() == 0) return;
+
                     try {
                         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
                         String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getContent());
@@ -413,10 +420,8 @@ abstract class AbstractClient {
 
     public Location obtainLocationReportAtomic(int userId, int ep) throws GeneralSecurityException, InterruptedException, JsonProcessingException {
         List<LocationServer.ObtainLocationReportResponse> reportResponses = new ArrayList<>();
-        List<Location> locations = new ArrayList<>();
-        Map<Integer, Integer> currentSeqNumbers = new HashMap<>();
 
-        final CountDownLatch finishLatch = new CountDownLatch(1);
+        final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
 
         Consumer<LocationServer.ObtainLocationReportResponse> requestObserver = new Consumer<>() {
             @Override
@@ -425,14 +430,11 @@ abstract class AbstractClient {
                     if (finishLatch.getCount() == 0) return;
 
                     try {
-                        if (response != null && verifyLocationReport(response, currentSeqNumbers)) {
-                            ObjectMapper objectMapper = new ObjectMapper();
-
-                            SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
-                            String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getLocationProver().getContent());
-                            locations.add(objectMapper.readValue(locationProverContent, Location.class));
+                        if (response != null && verifyLocationReport(userId, ep, response)) {
                             reportResponses.add(response);
-                            finishLatch.countDown();
+                            while (finishLatch.getCount() > 0) {
+                                finishLatch.countDown();
+                            }
                         }
                     } catch (JsonProcessingException | GeneralSecurityException ex) {
                         System.err.println("user" + getClientId() + ": caught processing exception while obtaining report");
@@ -442,28 +444,21 @@ abstract class AbstractClient {
         };
 
         for (int serverId : locationServerServiceStubs.keySet()) {
-            Integer key = null;
-            for (Integer seqNumberKey : seqNumbers.keySet()) {
-                if (seqNumberKey == serverId) {
-                    key = seqNumberKey;
-                }
-            }
-            synchronized (Objects.requireNonNull(key)) {
-                int currentSeqNumber = this.seqNumbers.get(key);
-                currentSeqNumbers.put(key, currentSeqNumber);
-                this.seqNumbers.put(key, currentSeqNumber + 1);
-            }
-            LocationServer.ObtainLocationReportRequest request = this.buildObtainLocationReportRequest(userId, ep, currentSeqNumbers.get(key));
+            LocationServer.ObtainLocationReportRequest request = this.buildObtainLocationReportRequest(userId, ep, this.seqNumbers.get(serverId));
             obtainLocationReport(locationServerServiceStubs.get(serverId), request, requestObserver);
         }
 
         finishLatch.await(10, TimeUnit.SECONDS);
 
-        if (finishLatch.getCount() == 0) {
+        if (finishLatch.getCount() == 0 && !reportResponses.isEmpty()) {
             writeBackLocationReport(reportResponses.get(0));
         } else {
             // TODO Check NOT_FOUND infinite loop
-            obtainLocationReportAtomic(userId, ep);
+            if (finishLatch.getCount() == 0 && reportResponses.isEmpty()) {
+                return null;
+            } else {
+                obtainLocationReportAtomic(userId, ep);
+            }
         }
 
         return locations.get(0);
