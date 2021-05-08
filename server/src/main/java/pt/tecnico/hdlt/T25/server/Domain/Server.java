@@ -27,6 +27,7 @@ import java.security.GeneralSecurityException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class Server {
     private String SERVER_RECOVERY_FILE_PATH;
@@ -67,6 +68,7 @@ public class Server {
         this.maxReplicas = maxReplicas;
         this.maxByzantineReplicas = maxByzantineReplicas;
         this.initializeSeqNumbers();
+        this.initializeBrb();
         this.locationReports = new HashMap<>();
         this.clientPublicKeys = new HashMap<>();
         this.privateKey = Crypto.getPriv("server-priv.key");
@@ -86,6 +88,22 @@ public class Server {
             final ManagedChannel channel = ManagedChannelBuilder.forTarget(target).usePlaintext().build();
             ByzantineReliableBroadcastServiceGrpc.ByzantineReliableBroadcastServiceStub stub = ByzantineReliableBroadcastServiceGrpc.newStub(channel);
             brbStubs.put(i, stub);
+        }
+    }
+
+    private void initializeBrb() {
+        this.sentEcho = new ConcurrentHashMap<>();
+        this.sentReady = new ConcurrentHashMap<>();
+        this.delivered = new ConcurrentHashMap<>();
+        this.echos = new ConcurrentHashMap<>();
+        this.readys = new ConcurrentHashMap<>();
+
+        for (int i = 0; i < numberOfUsers; i++) {
+            sentEcho.put(i, false);
+            sentReady.put(i, false);
+            delivered.put(i, false);
+            echos.put(i, new ConcurrentHashMap<>());
+            readys.put(i, new ConcurrentHashMap<>());
         }
     }
 
@@ -146,7 +164,7 @@ public class Server {
 
     public void startServer() throws IOException, InterruptedException {
         final BindableService locationService = new LocationServerServiceImpl(this);
-        final BindableService brbService = new ByzantineReliableBroadcastServiceImpl();
+        final BindableService brbService = new ByzantineReliableBroadcastServiceImpl(this);
 
         server = ServerBuilder.forPort(port)
                 .addService(locationService)
@@ -176,6 +194,83 @@ public class Server {
             this.clientPublicKeys.put(i, Crypto.getPub(fileName));
         }
         this.clientPublicKeys.put(-1, Crypto.getPub("ha-pub.key"));
+    }
+
+    private void sendReady(ByzantineReliableBroadcast.EchoRequest echoRequest) {
+
+    }
+
+    private int countMatches(String receivedSignatureContent, Map<Integer, ByzantineReliableBroadcast.EchoRequest> echosReceived) {
+        int matches = 0;
+
+        for (Integer serverEchoId : echosReceived.keySet()) {
+            ByzantineReliableBroadcast.EchoRequest echoRequest = echosReceived.get(serverEchoId);
+            // TODO SERVER PUB KEY
+            if (Crypto.verify(receivedSignatureContent, echoRequest.getLocationProver().getSignature(), this.getUserPublicKey(0))) {
+                matches++;
+            } else {
+                System.out.println("Server: Echo does not match!");
+            }
+        }
+
+        return matches;
+    }
+
+    public void handleEcho(ByzantineReliableBroadcast.EchoRequest echo) throws GeneralSecurityException, InvalidSignatureException, JsonProcessingException {
+        ObjectMapper objectMapper = new ObjectMapper();
+        SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(echo.getKey(), this.privateKey);
+        int serverIdSender = Integer.parseInt(Crypto.decryptAES(secretKeySpec, echo.getServerIdSender()));
+        int serverIdReceiver = Integer.parseInt(Crypto.decryptAES(secretKeySpec, echo.getServerIdSender()));
+        String locationProverContent = Crypto.decryptAES(secretKeySpec, echo.getLocationProver().getContent());
+        Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
+        int sourceClientId = locationProver.getUserId();
+
+        Map<Integer, String> locationProofsContent = new HashMap<>();
+        Map<Integer, String> locationProofsSignatures = new HashMap<>();
+
+        // Check each location proof in the report
+        for (ByzantineReliableBroadcast.LocationMsg locationProof : echo.getLocationProofsList()) {
+            String locationProofContent = Crypto.decryptAES(secretKeySpec, locationProof.getContent());
+
+            LocationProof proof = objectMapper.readValue(locationProofContent, LocationProof.class);
+            int witnessId = proof.getWitnessId();
+
+            locationProofsContent.put(witnessId, locationProofContent);
+            locationProofsSignatures.put(witnessId, locationProof.getSignature());
+        }
+
+        String reportContent = locationProverContent + locationProofsContent.values().stream().reduce("", String::concat);
+        String signatureContent = reportContent + secretKeySpec.toString() + serverIdSender + this.id;
+        if (!Crypto.verify(signatureContent, echo.getSignature(), this.getUserPublicKey(0))) {
+            System.out.println("Server: Report failed integrity or authentication checks in echo!");
+            throw new InvalidSignatureException();
+        }
+
+        // SENT READY TAMBEM?
+        Integer echokey = null;
+        for (Integer clientId : echos.keySet()) {
+            if (clientId == sourceClientId) {
+                echokey = clientId;
+            }
+        }
+
+        Integer readykey = null;
+        for (Integer clientId : sentReady.keySet()) {
+            if (clientId == sourceClientId) {
+                readykey = clientId;
+            }
+        }
+
+        synchronized (echokey) {
+            Map<Integer, ByzantineReliableBroadcast.EchoRequest> echosReceived = echos.get(sourceClientId);
+            echosReceived.put(serverIdSender, echo);
+            synchronized (readykey) {
+                if (!sentReady.get(sourceClientId) && countMatches(reportContent, echosReceived) > (maxReplicas + maxByzantineReplicas) / 2) {
+                    sentReady.put(sourceClientId, true);
+                    sendReady(echo);
+                }
+            }
+        }
     }
 
     public LocationServer.ObtainLatestSeqNumberResponse obtainLatestSeqNumber(LocationServer.ObtainLatestSeqNumberRequest request) throws GeneralSecurityException, InvalidSignatureException, JsonProcessingException {
@@ -221,7 +316,8 @@ public class Server {
             );
         }
 
-        String serverSignature = report.getLocationProver().toJsonString() + report.getLocationProofsContent().values().stream().reduce("", String::concat) + Arrays.toString(encodedKey) + this.id + serverIdReceiver;
+        String serverSignature = report.getLocationProver().toJsonString() + report.getLocationProofsContent().values().stream().reduce("", String::concat) + secretKeySpec.toString() + this.id + serverIdReceiver;
+        // TODO USER PUB KEY -> SERVER PUB KEY
         return ByzantineReliableBroadcast.EchoRequest.newBuilder()
                 .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getUserPublicKey(0)))
                 .setLocationProver(
@@ -236,66 +332,42 @@ public class Server {
                 .build();
     }
 
-    private void broadcastReport(LocationReport report) throws GeneralSecurityException {
+    private void broadcastReport(LocationReport report) throws GeneralSecurityException, InterruptedException {
         int sourceClientId = report.getLocationProver().getUserId();
+        if (!sentEcho.get(sourceClientId)) {
+            sentEcho.put(sourceClientId, true);
 
-        for (Integer serverId : brbStubs.keySet()) {
-            ByzantineReliableBroadcast.EchoRequest request = buildEchoRequest(report, serverId);
-            brbStubs.get(serverId).echo(request, new StreamObserver<Empty>() {
-                @Override
-                public void onNext(Empty empty) {
-                }
+            for (Integer serverId : brbStubs.keySet()) {
+                ByzantineReliableBroadcast.EchoRequest request = buildEchoRequest(report, serverId);
+                brbStubs.get(serverId).echo(request, new StreamObserver<Empty>() {
+                    @Override
+                    public void onNext(Empty empty) {
+                    }
 
-                @Override
-                public void onError(Throwable throwable) {
-                }
+                    @Override
+                    public void onError(Throwable throwable) {
+                    }
 
-                @Override
-                public void onCompleted() {
+                    @Override
+                    public void onCompleted() {
+                    }
+                });
+            }
+
+            Integer deliverkey = null;
+            for (Integer clientId : delivered.keySet()) {
+                if (clientId == sourceClientId) {
+                    deliverkey = clientId;
                 }
-            });
+            }
+
+            synchronized (deliverkey) {
+                deliverkey.wait();
+            }
         }
-        sentEcho.put(sourceClientId, true);
-
-        Runnable echoRunnable = () -> {
-            try {
-                Integer echokey = null;
-                for (Integer clientId : sentEcho.keySet()) {
-                    if (clientId == sourceClientId) {
-                        echokey = clientId;
-                    }
-                }
-                synchronized (echokey) {
-                    echokey.wait();
-                }
-            }
-            catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        };
-
-        Runnable readyRunnable = () -> {
-            try {
-                Integer readykey = null;
-                for (Integer clientId : sentReady.keySet()) {
-                    if (clientId == sourceClientId) {
-                        readykey = clientId;
-                    }
-                }
-                synchronized (readykey) {
-                    readykey.wait();
-                }
-            }
-            catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        };
-
-        Thread thread = new Thread(echoRunnable);
-        thread.start();
     }
 
-    public LocationServer.SubmitLocationReportResponse submitLocationReport(LocationServer.SubmitLocationReportRequest report) throws IOException, GeneralSecurityException, DuplicateReportException, InvalidSignatureException, InvalidNumberOfProofsException {
+    public LocationServer.SubmitLocationReportResponse submitLocationReport(LocationServer.SubmitLocationReportRequest report) throws IOException, GeneralSecurityException, DuplicateReportException, InvalidSignatureException, InvalidNumberOfProofsException, InterruptedException {
         ObjectMapper objectMapper = new ObjectMapper();
         List<Integer> witnessIds = new ArrayList<>();
 
