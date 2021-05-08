@@ -39,7 +39,7 @@ public class ClientApp {
 
 		try {
 			if (clientId == -1) {
-				new HAClient(serverHost, serverPort, clientId, systemInfo, false, maxReplicas, maxByzantineReplicas);
+				new HAClient(serverHost, serverPort, clientId, systemInfo, false, maxByzantineUsers, maxReplicas, maxByzantineReplicas);
 			} else {
 				if (args.length == 8 && Boolean.parseBoolean(args[7])) {
 					System.err.println("I am a byzantine user");

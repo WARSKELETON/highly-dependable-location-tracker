@@ -10,9 +10,7 @@ import pt.tecnico.hdlt.T25.crypto.Crypto;
 
 import javax.crypto.spec.SecretKeySpec;
 import java.security.GeneralSecurityException;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -24,11 +22,10 @@ public class HAClient extends AbstractClient {
     private static final String OBTAIN_LOCATION_REPORT = "obtainLocation";
     private static final String OBTAIN_USERS_AT_LOCATION = "obtainUsers";
 
-    public HAClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, boolean isTest, int maxReplicas, int maxByzantineReplicas) throws GeneralSecurityException, JsonProcessingException, InterruptedException {
-        super(serverHost, serverPort, clientId, systemInfo, maxReplicas, maxByzantineReplicas);
+    public HAClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, boolean isTest, int maxByzantineUsers, int maxReplicas, int maxByzantineReplicas) throws GeneralSecurityException, JsonProcessingException, InterruptedException {
+        super(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxReplicas, maxByzantineReplicas);
         this.setPrivateKey(getPriv("ha-priv.key"));
         checkLatestSeqNumberRegular();
-        System.out.println("Seq number: " + getSeqNumber());
         if (!isTest) this.eventLoop();
     }
 
@@ -50,11 +47,7 @@ public class HAClient extends AbstractClient {
 
     public List<Location> obtainUsersAtLocationRegular(int latitude, int longitude, int ep) throws JsonProcessingException, GeneralSecurityException, InterruptedException {
         List<Location> locations = new ArrayList<>();
-        int currentSeqNumber;
-        synchronized (getSeqNumberLock()) {
-            currentSeqNumber = this.getSeqNumber();
-            setSeqNumber(currentSeqNumber + 1);
-        }
+        Map<Integer, Integer> currentSeqNumbers = new HashMap<>();
 
         final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas())/2 + 1);
 
@@ -67,13 +60,13 @@ public class HAClient extends AbstractClient {
                     try {
                         ObjectMapper objectMapper = new ObjectMapper();
                         for (LocationServer.ObtainLocationReportResponse report : response.getLocationReportsList()) {
-                            if (verifyLocationReport(report, currentSeqNumber)) {
+                            if (verifyLocationReport(report, currentSeqNumbers)) {
                                 SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(report.getKey(), getPrivateKey());
                                 String locationProverContent = Crypto.decryptAES(secretKeySpec, report.getLocationProver().getContent());
                                 locations.add(objectMapper.readValue(locationProverContent, Location.class));
+                                finishLatch.countDown();
                             }
                         }
-                        finishLatch.countDown();
                     } catch (JsonProcessingException|GeneralSecurityException ex) {
                         System.err.println("user" + getClientId() + ": caught processing exception while obtaining users at location");
                     }
@@ -81,8 +74,19 @@ public class HAClient extends AbstractClient {
             }
         };
 
-        LocationServer.ObtainUsersAtLocationRequest request = buildObtainUsersAtLocationRequest(latitude, longitude, ep, currentSeqNumber);
         for (int serverId : getLocationServerServiceStub().keySet()) {
+            Integer key = null;
+            for (Integer seqNumberKey : getSeqNumbers().keySet()) {
+                if (seqNumberKey == serverId) {
+                    key = seqNumberKey;
+                }
+            }
+            synchronized (Objects.requireNonNull(key)) {
+                int currentSeqNumber = getSeqNumbers().get(key);
+                currentSeqNumbers.put(key, currentSeqNumber);
+                getSeqNumbers().put(key, currentSeqNumber + 1);
+            }
+            LocationServer.ObtainUsersAtLocationRequest request = buildObtainUsersAtLocationRequest(latitude, longitude, ep, currentSeqNumbers.get(key));
             obtainUsersAtLocation(getLocationServerServiceStub().get(serverId), request, requestObserver);
         }
 

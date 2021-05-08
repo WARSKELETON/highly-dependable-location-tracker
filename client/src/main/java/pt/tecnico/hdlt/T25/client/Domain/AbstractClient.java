@@ -8,7 +8,6 @@ import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
 import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.LocationServerServiceGrpc;
-import pt.tecnico.hdlt.T25.Proximity;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 
 import javax.crypto.spec.SecretKeySpec;
@@ -31,30 +30,38 @@ abstract class AbstractClient {
     private String serverHost;
     private int serverPort;
     private int clientId;
-    private int seqNumber;
+    private Map<Integer, Integer> seqNumbers;
+    private final int maxByzantineUsers;
     private int maxReplicas;
     private int maxByzantineReplicas;
     private PrivateKey privateKey;
     private PublicKey serverPublicKey;
     private Map<Integer, PublicKey> publicKeys;
     private SystemInfo systemInfo;
-    private final Object seqNumberLock = new Object();
     private Map<Integer, LocationServerServiceGrpc.LocationServerServiceStub> locationServerServiceStubs;
 
-    AbstractClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxReplicas, int maxByzantineReplicas) throws GeneralSecurityException, JsonProcessingException {
+    AbstractClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxByzantineUsers, int maxReplicas, int maxByzantineReplicas) throws GeneralSecurityException, JsonProcessingException {
         this.serverHost = serverHost;
         this.serverPort = serverPort;
         this.clientId = clientId;
         this.systemInfo = systemInfo;
+        this.maxByzantineUsers = maxByzantineUsers;
         this.maxReplicas = maxReplicas;
         this.maxByzantineReplicas = maxByzantineReplicas;
-        this.seqNumber = 0;
+        this.initializeSeqNumbers();
         this.publicKeys = new HashMap<>();
         this.locationServerServiceStubs = new HashMap<>();
         this.serverPublicKey = Crypto.getPub("server-pub.key");
         this.connectToServers();
         this.loadPublicKeys();
         this.updateEpochs();
+    }
+
+    private void initializeSeqNumbers() {
+        this.seqNumbers = new HashMap<>();
+        for (int i = 0; i < maxReplicas; i++) {
+            seqNumbers.put(i, 0);
+        }
     }
 
     String getServerHost() {
@@ -79,6 +86,10 @@ abstract class AbstractClient {
 
     void setClientId(int clientId) {
         this.clientId = clientId;
+    }
+
+    public int getMaxByzantineUsers() {
+        return maxByzantineUsers;
     }
 
     public int getMaxByzantineReplicas() {
@@ -121,16 +132,8 @@ abstract class AbstractClient {
         this.systemInfo = systemInfo;
     }
 
-    public int getSeqNumber() {
-        return seqNumber;
-    }
-
-    public void setSeqNumber(int seqNumber) {
-        this.seqNumber = seqNumber;
-    }
-
-    public Object getSeqNumberLock() {
-        return seqNumberLock;
+    public Map<Integer, Integer> getSeqNumbers() {
+        return seqNumbers;
     }
 
     public Map<Integer, LocationServerServiceGrpc.LocationServerServiceStub> getLocationServerServiceStub() {
@@ -157,7 +160,8 @@ abstract class AbstractClient {
                 proof.getLongitude() == locationProver.getLongitude();
     }
 
-    boolean verifyLocationReport(LocationServer.ObtainLocationReportResponse response, int currentSeqNumber) throws JsonProcessingException, GeneralSecurityException {
+    boolean verifyLocationReport(LocationServer.ObtainLocationReportResponse response, Map<Integer, Integer> currentSeqNumbers) throws JsonProcessingException, GeneralSecurityException {
+        List<Integer> witnessIds = new ArrayList<>();
         ObjectMapper objectMapper = new ObjectMapper();
 
         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), this.privateKey);
@@ -165,29 +169,39 @@ abstract class AbstractClient {
 
         String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getLocationProver().getContent());
         int receivedSeqNumber = Integer.parseInt(Crypto.decryptAES(secretKeySpec, response.getSeqNumber()));
+        int serverId = Integer.parseInt(Crypto.decryptAES(secretKeySpec, response.getServerId()));
+        int currentSeqNumber = currentSeqNumbers.get(serverId);
         Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
         List<String> locationProofsContent = new ArrayList<>();
 
         if (receivedSeqNumber != currentSeqNumber + 1) {
-            System.out.println("user" + getClientId() + ": Server should not be trusted! Received sequence number " + receivedSeqNumber + " but expected " + currentSeqNumber + 1);
+            System.out.println("user" + getClientId() + ": Server should not be trusted! Received sequence number " + receivedSeqNumber + " but expected " + currentSeqNumber);
             return false;
         }
 
         for (LocationServer.LocationMessage locationProof : response.getLocationProofsList()) {
             String locationProofContent = Crypto.decryptAES(secretKeySpec, locationProof.getContent());
             LocationProof proof = objectMapper.readValue(locationProofContent, LocationProof.class);
+            int witnessId = proof.getWitnessId();
             locationProofsContent.add(locationProofContent);
 
             // A single illegitimate proof found in the report should invalidate the whole report
-            if (!(this.verifyLocationProof(proof, locationProver) && Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(proof.getWitnessId())))) {
+            if (!witnessIds.contains(witnessId) && witnessId != locationProver.getUserId() && !(this.verifyLocationProof(proof, locationProver) && Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(proof.getWitnessId())))) {
                 System.out.println("user" + getClientId() + ": Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
                 return false;
+            } else {
+                witnessIds.add(witnessId);
             }
+        }
+
+        if (witnessIds.size() < maxByzantineUsers) {
+            System.out.println("user" + getClientId() + ": Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() + ", " + locationProver.getLongitude() + ". Insufficient proofs.");
+            return false;
         }
 
         // Verify inner report client signature and outer server signature
         String reportContentString = locationProverContent + locationProofsContent.stream().reduce("", String::concat);
-        String responseContentString = reportContentString + receivedSeqNumber;
+        String responseContentString = reportContentString + receivedSeqNumber + serverId;
         if (!Crypto.verify(reportContentString, response.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId())) || !Crypto.verify(responseContentString, response.getServerSignature(), this.getServerPublicKey())) {
             System.out.println("user" + getClientId() + ": Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
             return false;
@@ -196,24 +210,28 @@ abstract class AbstractClient {
         return true;
     }
 
-    private void updateSeqNumber(LocationServer.ObtainLatestSeqNumberResponse response) throws GeneralSecurityException, JsonProcessingException {
+    private boolean isValidSeqNumber(LocationServer.ObtainLatestSeqNumberResponse response) throws GeneralSecurityException, JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), this.privateKey);
         String requestContent = Crypto.decryptAES(secretKeySpec, response.getContent());
-        SeqNumberResponse seqNumberResponse = objectMapper.readValue(requestContent, SeqNumberResponse.class);
+        SeqNumberMessage seqNumberResponse = objectMapper.readValue(requestContent, SeqNumberMessage.class);
         int clientId = seqNumberResponse.getClientId();
+        int serverId = seqNumberResponse.getServerId();
         int seqNumber = seqNumberResponse.getSeqNumber();
 
         if (!Crypto.verify(requestContent, response.getSignature(), this.serverPublicKey) || clientId != getClientId()) {
             System.out.println("user" + getClientId() + ": invalid sequence number response");
-            return;
+            return false;
+        } else {
+            this.seqNumbers.put(serverId, seqNumber);
+            System.out.println("Seq number with server" + serverId + ": " + this.seqNumbers.get(serverId));
+            return true;
         }
-
-        this.seqNumber = seqNumber;
     }
 
-    private LocationServer.ObtainLatestSeqNumberRequest buildObtainLatestSeqNumberRequest() throws GeneralSecurityException {
-        String requestContent = Integer.toString(clientId);
+    private LocationServer.ObtainLatestSeqNumberRequest buildObtainLatestSeqNumberRequest(int serverId) throws GeneralSecurityException {
+        SeqNumberMessage seqNumberMessage = new SeqNumberMessage(clientId, serverId, -1);
+        String requestContent = seqNumberMessage.toJsonString();
 
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
@@ -226,9 +244,6 @@ abstract class AbstractClient {
     }
 
     public void checkLatestSeqNumberRegular() throws GeneralSecurityException, InterruptedException {
-        LocationServer.ObtainLatestSeqNumberRequest request = buildObtainLatestSeqNumberRequest();
-
-        // TODO BYZANTINE QUORUM
         final CountDownLatch finishLatch = new CountDownLatch((maxReplicas + maxByzantineReplicas) / 2 + 1);
 
         Consumer<LocationServer.ObtainLatestSeqNumberResponse> requestObserver = new Consumer<>() {
@@ -238,8 +253,9 @@ abstract class AbstractClient {
                     if (finishLatch.getCount() == 0) return;
 
                     try {
-                        updateSeqNumber(response);
-                        finishLatch.countDown();
+                        if (isValidSeqNumber(response)) {
+                            finishLatch.countDown();
+                        }
                     } catch (JsonProcessingException | GeneralSecurityException ex) {
                         System.err.println("user" + getClientId() + ": caught processing exception while checking sequence number");
                     }
@@ -248,10 +264,15 @@ abstract class AbstractClient {
         };
 
         for (int serverId : locationServerServiceStubs.keySet()) {
+            LocationServer.ObtainLatestSeqNumberRequest request = buildObtainLatestSeqNumberRequest(serverId);
             checkLatestSeqNumber(locationServerServiceStubs.get(serverId), request, requestObserver);
         }
 
         finishLatch.await(10, TimeUnit.SECONDS);
+
+        if (finishLatch.getCount() > 0) {
+            checkLatestSeqNumberRegular();
+        }
     }
 
     private void checkLatestSeqNumber(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.ObtainLatestSeqNumberRequest request, Consumer<LocationServer.ObtainLatestSeqNumberResponse> callback) {
@@ -393,11 +414,7 @@ abstract class AbstractClient {
     public Location obtainLocationReportAtomic(int userId, int ep) throws GeneralSecurityException, InterruptedException, JsonProcessingException {
         List<LocationServer.ObtainLocationReportResponse> reportResponses = new ArrayList<>();
         List<Location> locations = new ArrayList<>();
-        int currentSeqNumber;
-        synchronized (seqNumberLock) {
-            currentSeqNumber = this.seqNumber;
-            this.seqNumber += 1;
-        }
+        Map<Integer, Integer> currentSeqNumbers = new HashMap<>();
 
         final CountDownLatch finishLatch = new CountDownLatch(1);
 
@@ -408,7 +425,7 @@ abstract class AbstractClient {
                     if (finishLatch.getCount() == 0) return;
 
                     try {
-                        if (response != null && verifyLocationReport(response, currentSeqNumber)) {
+                        if (response != null && verifyLocationReport(response, currentSeqNumbers)) {
                             ObjectMapper objectMapper = new ObjectMapper();
 
                             SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
@@ -424,8 +441,19 @@ abstract class AbstractClient {
             }
         };
 
-        LocationServer.ObtainLocationReportRequest request = this.buildObtainLocationReportRequest(userId, ep, currentSeqNumber);
         for (int serverId : locationServerServiceStubs.keySet()) {
+            Integer key = null;
+            for (Integer seqNumberKey : seqNumbers.keySet()) {
+                if (seqNumberKey == serverId) {
+                    key = seqNumberKey;
+                }
+            }
+            synchronized (Objects.requireNonNull(key)) {
+                int currentSeqNumber = this.seqNumbers.get(key);
+                currentSeqNumbers.put(key, currentSeqNumber);
+                this.seqNumbers.put(key, currentSeqNumber + 1);
+            }
+            LocationServer.ObtainLocationReportRequest request = this.buildObtainLocationReportRequest(userId, ep, currentSeqNumbers.get(key));
             obtainLocationReport(locationServerServiceStubs.get(serverId), request, requestObserver);
         }
 

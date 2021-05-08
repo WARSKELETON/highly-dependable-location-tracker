@@ -23,10 +23,9 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.*;
 
-import static pt.tecnico.hdlt.T25.server.ServerApp.BACKUP_RECOVERY_FILE_PATH;
-import static pt.tecnico.hdlt.T25.server.ServerApp.SERVER_RECOVERY_FILE_PATH;
-
 public class Server {
+    private String SERVER_RECOVERY_FILE_PATH;
+    private String BACKUP_RECOVERY_FILE_PATH;
     private static final int SERVER_ORIGINAL_PORT = 8080;
 
     private int id;
@@ -44,18 +43,27 @@ public class Server {
 
     public Server(int serverId, int numberOfUsers, int step, int maxByzantineUsers, int maxNearbyByzantineUsers) throws IOException, GeneralSecurityException, InterruptedException {
         this.id = serverId;
+        this.SERVER_RECOVERY_FILE_PATH = "resources/server_state" + serverId + ".json";
+        this.BACKUP_RECOVERY_FILE_PATH = "resources/backup_state" + serverId + ".json";
         this.port = SERVER_ORIGINAL_PORT + serverId;
         this.numberOfUsers = numberOfUsers;
         this.step = step;
         this.maxByzantineUsers = maxByzantineUsers;
         this.maxNearbyByzantineUsers = maxNearbyByzantineUsers;
-        this.seqNumbers = new HashMap<>();
+        this.initializeSeqNumbers();
         this.locationReports = new HashMap<>();
         this.clientPublicKeys = new HashMap<>();
         this.privateKey = Crypto.getPriv("server-priv.key");
         this.loadPublicKeys();
         this.loadPreviousState();
         this.startServer();
+    }
+
+    private void initializeSeqNumbers() {
+        this.seqNumbers = new HashMap<>();
+        for (int i = 0; i < numberOfUsers; i++) {
+            seqNumbers.put(i, 0);
+        }
     }
 
     private void loadPreviousState() {
@@ -80,7 +88,7 @@ public class Server {
         JsonNode objectNode = objectMapper.readTree(new File(filepath));
         objectMapper.configure(JsonParser.Feature.AUTO_CLOSE_SOURCE, true);
 
-        // TODO SAVE ID port = objectNode.get("port").asInt();
+        id = objectNode.get("id").asInt();
         numberOfUsers = objectNode.get("numberOfUsers").asInt();
         step = objectNode.get("step").asInt();
         maxByzantineUsers = objectNode.get("maxByzantineUsers").asInt();
@@ -136,10 +144,13 @@ public class Server {
         this.clientPublicKeys.put(-1, Crypto.getPub("ha-pub.key"));
     }
 
-    public LocationServer.ObtainLatestSeqNumberResponse obtainLatestSeqNumber(LocationServer.ObtainLatestSeqNumberRequest request) throws GeneralSecurityException, InvalidSignatureException {
+    public LocationServer.ObtainLatestSeqNumberResponse obtainLatestSeqNumber(LocationServer.ObtainLatestSeqNumberRequest request) throws GeneralSecurityException, InvalidSignatureException, JsonProcessingException {
+        ObjectMapper objectMapper = new ObjectMapper();
         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(request.getKey(), this.privateKey);
         String requestContent = Crypto.decryptAES(secretKeySpec, request.getContent());
-        int clientId = Integer.parseInt(requestContent);
+        SeqNumberMessage seqNumberMessage = objectMapper.readValue(requestContent, SeqNumberMessage.class);
+
+        int clientId = seqNumberMessage.getClientId();
 
         if (!Crypto.verify(requestContent, request.getSignature(), this.getUserPublicKey(clientId))) {
             System.out.println("Server: Some user tried to illegitimately request user" + clientId + " sequence number");
@@ -151,7 +162,7 @@ public class Server {
 
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec newSecretKeySpec = new SecretKeySpec(encodedKey, "AES");
-        SeqNumberResponse seqNumberResponse = new SeqNumberResponse(clientId, currentSeqNumber);
+        SeqNumberMessage seqNumberResponse = new SeqNumberMessage(clientId, this.id, currentSeqNumber);
 
         return LocationServer.ObtainLatestSeqNumberResponse.newBuilder()
                 .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getUserPublicKey(clientId)))
@@ -245,10 +256,10 @@ public class Server {
         System.out.println("Server: Obtaining location for " + locationRequest.getUserId() + " at epoch " + locationRequest.getEp());
         this.saveCurrentServerState();
 
-        return this.getLocationReportResponse(locationReport, sourceClientId, seqNumbers.get(sourceClientId));
+        return this.buildLocationReportResponse(locationReport, sourceClientId, seqNumbers.get(sourceClientId));
     }
 
-    private LocationServer.ObtainLocationReportResponse getLocationReportResponse(LocationReport report, int userId, int seqNumber) throws GeneralSecurityException {
+    private LocationServer.ObtainLocationReportResponse buildLocationReportResponse(LocationReport report, int userId, int seqNumber) throws GeneralSecurityException {
         List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
@@ -264,7 +275,7 @@ public class Server {
             );
         }
 
-        String serverSignature = report.getLocationProver().toJsonString() + report.getLocationProofsContent().values().stream().reduce("", String::concat) + seqNumber;
+        String serverSignature = report.getLocationProver().toJsonString() + report.getLocationProofsContent().values().stream().reduce("", String::concat) + seqNumber + this.id;
         return LocationServer.ObtainLocationReportResponse.newBuilder()
                 .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getUserPublicKey(userId)))
                 .setLocationProver(
@@ -275,6 +286,7 @@ public class Server {
                 .addAllLocationProofs(locationProofMessages)
                 .setServerSignature(Crypto.sign(serverSignature, this.privateKey))
                 .setSeqNumber(Crypto.encryptAES(secretKeySpec, Integer.toString(seqNumber)))
+                .setServerId(Crypto.encryptAES(secretKeySpec, Integer.toString(this.id)))
                 .build();
     }
 
@@ -302,7 +314,7 @@ public class Server {
         for (int i = 0; i < this.numberOfUsers; i++) {
             LocationReport report = locationReports.get(new Pair<>(i, locationRequest.getEp()));
             if (report != null && report.getLocationProver().getLongitude() == locationRequest.getLongitude() && report.getLocationProver().getLatitude() == locationRequest.getLatitude()) {
-                locationReportResponses.add(this.getLocationReportResponse(report, -1, seqNumbers.get(-1)));
+                locationReportResponses.add(this.buildLocationReportResponse(report, -1, seqNumbers.get(-1)));
             }
         }
         System.out.println("Server: Obtaining location for " + clientId + " at epoch " + locationRequest.getEp());
@@ -348,7 +360,7 @@ public class Server {
         }
 
         ObjectNode node = objectMapper.createObjectNode();
-        node.put("port", port);
+        node.put("id", id);
         node.put("numberOfUsers", numberOfUsers);
         node.put("step", step);
         node.put("maxByzantineUsers", maxByzantineUsers);

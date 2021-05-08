@@ -1,5 +1,6 @@
 package pt.tecnico.hdlt.T25.server.Services;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import io.grpc.Context;
 import io.grpc.Status;
 import pt.tecnico.hdlt.T25.LocationServer;
@@ -35,7 +36,7 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 			responseObserver.onCompleted();
 		} catch (InvalidSignatureException ex3) {
 			responseObserver.onError(Status.UNAUTHENTICATED.withDescription(ex3.getMessage()).asRuntimeException());
-		} catch (GeneralSecurityException ex4) {
+		} catch (JsonProcessingException|GeneralSecurityException ex4) {
 			responseObserver.onError(Status.ABORTED.withDescription(ex4.getMessage()).asRuntimeException());
 		}
 	}

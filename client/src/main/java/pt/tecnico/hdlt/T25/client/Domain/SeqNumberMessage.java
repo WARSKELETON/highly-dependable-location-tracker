@@ -1,17 +1,19 @@
-package pt.tecnico.hdlt.T25.server.Domain;
+package pt.tecnico.hdlt.T25.client.Domain;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-public class SeqNumberResponse {
+public class SeqNumberMessage {
     private int clientId;
+    private int serverId;
     private int seqNumber;
 
-    public SeqNumberResponse() {
+    public SeqNumberMessage() {
     }
 
-    public SeqNumberResponse(int clientId, int seqNumber) {
+    public SeqNumberMessage(int clientId, int serverId, int seqNumber) {
         this.clientId = clientId;
+        this.serverId = serverId;
         this.seqNumber = seqNumber;
     }
 
@@ -21,6 +23,14 @@ public class SeqNumberResponse {
 
     public void setClientId(int clientId) {
         this.clientId = clientId;
+    }
+
+    public int getServerId() {
+        return serverId;
+    }
+
+    public void setServerId(int serverId) {
+        this.serverId = serverId;
     }
 
     public int getSeqNumber() {
@@ -36,6 +46,7 @@ public class SeqNumberResponse {
         ObjectNode node = objectMapper.createObjectNode();
 
         node.put("clientId", this.getClientId());
+        node.put("serverId", this.getServerId());
         node.put("seqNumber", this.getSeqNumber());
 
         return node;

@@ -30,25 +30,18 @@ public class Client extends AbstractClient {
     private static final int CLIENT_ORIGINAL_PORT = 8000;
 
     private final int maxNearbyByzantineUsers;
-    private final int maxByzantineUsers;
     private Map<Integer, ProximityServiceGrpc.ProximityServiceStub> proximityServiceStubs;
     private Map<Integer, LocationReport> locationReports;
 
     public Client(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxByzantineUsers, int maxNearbyByzantineUsers, boolean isTest, int maxReplicas, int maxByzantineReplicas) throws IOException, GeneralSecurityException, InterruptedException {
-        super(serverHost, serverPort, clientId, systemInfo, maxReplicas, maxByzantineReplicas);
+        super(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxReplicas, maxByzantineReplicas);
         this.maxNearbyByzantineUsers = maxNearbyByzantineUsers;
-        this.maxByzantineUsers = maxByzantineUsers;
         this.locationReports = new HashMap<>();
         this.proximityServiceStubs = new HashMap<>();
         this.connectToClients();
         this.setPrivateKey(getPriv("client" + clientId + "-priv.key"));
         checkLatestSeqNumberRegular();
-        System.out.println("Seq number: " + getSeqNumber());
         if (!isTest) this.eventLoop();
-    }
-
-    public int getMaxByzantineUsers() {
-        return maxByzantineUsers;
     }
 
     public int getMaxNearbyByzantineUsers() {
@@ -117,7 +110,7 @@ public class Client extends AbstractClient {
 
         List<Integer> nearbyUsers = getNearbyUsers(location);
 
-        final CountDownLatch finishLatch = new CountDownLatch(this.maxByzantineUsers);
+        final CountDownLatch finishLatch = new CountDownLatch(this.getMaxByzantineUsers());
 
         System.out.println("user" + getClientId() + ": Nearby users: " + nearbyUsers.size());
         for (int witnessId : nearbyUsers) {
@@ -153,7 +146,7 @@ public class Client extends AbstractClient {
             LocationReport locationReport = new LocationReport(location, Crypto.sign(signature, this.getPrivateKey()), locationProofsContent, locationProofsSignatures);
             locationReports.put(ep, locationReport);
             return true;
-        } else if (finishLatch.getCount() > 0 && nearbyUsers.size() >= maxByzantineUsers + maxNearbyByzantineUsers) {
+        } else if (finishLatch.getCount() > 0 && nearbyUsers.size() >= getMaxByzantineUsers() + maxNearbyByzantineUsers) {
             return createLocationReport(clientId, ep, latitude, longitude);
         }
 
