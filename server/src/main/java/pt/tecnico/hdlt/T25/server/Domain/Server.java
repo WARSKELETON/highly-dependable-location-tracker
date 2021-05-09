@@ -76,6 +76,7 @@ public class Server {
         this.loadPreviousState();
         this.startServer();
         this.connectToServers();
+        server.awaitTermination();
     }
 
     private void connectToServers() {
@@ -174,8 +175,6 @@ public class Server {
         server.start();
 
         System.out.println("Server: Server started");
-
-        server.awaitTermination();
     }
 
     public void shutdownServer() {
@@ -628,11 +627,14 @@ public class Server {
     private LocationServer.SubmitLocationReportResponse buildSubmitLocationReportResponse(boolean verified, int userId) throws GeneralSecurityException {
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
+        SubmitLocationReportResponse response = new SubmitLocationReportResponse(userId, this.id, verified);
+        String responseString = response.toJsonString();
+        String responseSignatureString = response.toJsonString() + secretKeySpec.toString();
 
         return LocationServer.SubmitLocationReportResponse.newBuilder()
                 .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getUserPublicKey(userId)))
-                .setContent(Crypto.encryptAES(secretKeySpec, String.valueOf(verified)))
-                .setSignature(Crypto.sign(String.valueOf(verified), this.privateKey))
+                .setContent(Crypto.encryptAES(secretKeySpec, responseString))
+                .setSignature(Crypto.sign(responseSignatureString, this.privateKey))
                 .build();
     }
 

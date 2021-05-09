@@ -48,10 +48,10 @@ abstract class AbstractClient {
         this.maxByzantineUsers = maxByzantineUsers;
         this.maxReplicas = maxReplicas;
         this.maxByzantineReplicas = maxByzantineReplicas;
-        this.initializeSeqNumbers();
         this.loadPublicKeys();
         this.locationServerServiceStubs = new HashMap<>();
         this.connectToServers();
+        this.initializeSeqNumbers();
         this.updateEpochs();
     }
 
@@ -197,8 +197,7 @@ abstract class AbstractClient {
         // Verify inner report client signature and outer server signature
         String reportContentString = locationProverContent + locationProofsContent.stream().reduce("", String::concat);
         String responseContentString = reportContentString + receivedSeqNumber + serverId;
-        // TODO SERVER PUB
-        if (!Crypto.verify(reportContentString, response.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId())) || !Crypto.verify(responseContentString, response.getServerSignature(), this.getServerPublicKey(0))) {
+        if (!Crypto.verify(reportContentString, response.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId())) || !Crypto.verify(responseContentString, response.getServerSignature(), this.getServerPublicKey(serverId))) {
             System.out.println("user" + getClientId() + ": Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
             return false;
         }
@@ -297,7 +296,7 @@ abstract class AbstractClient {
         }
     }
 
-    private LocationServer.SubmitLocationReportRequest buildSubmitLocationReportRequestWriteBack(LocationServer.ObtainLocationReportResponse response) throws GeneralSecurityException {
+    private LocationServer.SubmitLocationReportRequest buildSubmitLocationReportRequestWriteBack(LocationServer.ObtainLocationReportResponse response, int serverId) throws GeneralSecurityException {
         List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
         SecretKeySpec receivedSecretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
         String locationProverContent = Crypto.decryptAES(receivedSecretKeySpec, response.getLocationProver().getContent());
@@ -316,15 +315,17 @@ abstract class AbstractClient {
             );
         }
 
-        // TODO SERVER PUB
+        String outerSignatureContent = locationProverContent + secretKeySpec.toString() + serverId;
         return LocationServer.SubmitLocationReportRequest.newBuilder()
-                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey(0)))
+                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey(serverId)))
                 .setLocationProver(
                         LocationServer.LocationMessage.newBuilder()
                                 .setContent(Crypto.encryptAES(secretKeySpec, locationProverContent))
                                 .setSignature(response.getLocationProver().getSignature())
                                 .build())
                 .addAllLocationProofs(locationProofMessages)
+                .setServerId(Crypto.encryptAES(secretKeySpec, String.valueOf(serverId)))
+                .setOuterSignature(Crypto.sign(outerSignatureContent, this.privateKey))
                 .build();
     }
 
@@ -338,15 +339,18 @@ abstract class AbstractClient {
                 synchronized (finishLatch) {
                     if (finishLatch.getCount() == 0) return;
 
-                    // TODO SERVER PUB
                     try {
+                        ObjectMapper objectMapper = new ObjectMapper();
                         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
-                        String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getContent());
-                        if (Crypto.verify(locationProverContent, response.getSignature(), getServerPublicKey(0))) {
-                            System.out.println("user" + getClientId() + ": " + locationProverContent);
+                        String responseString = Crypto.decryptAES(secretKeySpec, response.getContent());
+                        SubmitLocationReportResponse submitResponse = objectMapper.readValue(responseString, SubmitLocationReportResponse.class);
+                        String signatureString = responseString + secretKeySpec.toString();
+
+                        if (Crypto.verify(signatureString, response.getSignature(), getServerPublicKey(submitResponse.getServerId()))) {
+                            System.out.println("user" + getClientId() + ": Received submit location report response -> " + submitResponse.isOk());
                             finishLatch.countDown();
                         }
-                    } catch (GeneralSecurityException ex) {
+                    } catch (GeneralSecurityException | JsonProcessingException ex) {
                         System.err.println("user" + getClientId() + ": caught processing exception while writing back report");
                     }
                 }
@@ -366,8 +370,8 @@ abstract class AbstractClient {
 
         };
 
-        LocationServer.SubmitLocationReportRequest request = this.buildSubmitLocationReportRequestWriteBack(response);
         for (int serverId : locationServerServiceStubs.keySet()) {
+            LocationServer.SubmitLocationReportRequest request = this.buildSubmitLocationReportRequestWriteBack(response, serverId);
             submitLocationReport(locationServerServiceStubs.get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver);
         }
 
@@ -508,7 +512,7 @@ abstract class AbstractClient {
 
         for (int i = 0; i < maxReplicas; i++) {
             String fileName = "server" + i + "-pub.key";
-            this.publicKeys.put(i, Crypto.getPub(fileName));
+            this.serverPublicKeys.put(i, Crypto.getPub(fileName));
         }
     }
 

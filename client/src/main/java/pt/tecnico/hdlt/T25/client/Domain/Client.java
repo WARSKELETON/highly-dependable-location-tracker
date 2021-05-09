@@ -1,6 +1,7 @@
 package pt.tecnico.hdlt.T25.client.Domain;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.*;
 import io.grpc.stub.StreamObserver;
@@ -214,7 +215,7 @@ public class Client extends AbstractClient {
         }
 
         String content = locationReport.getLocationProver().toJsonString();
-
+        String outerSignatureContent = content + secretKeySpec.toString() + serverId;
         return LocationServer.SubmitLocationReportRequest.newBuilder()
                 .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey(serverId)))
                 .setLocationProver(
@@ -223,6 +224,8 @@ public class Client extends AbstractClient {
                                 .setSignature(locationReport.getLocationProverSignature())
                                 .build())
                 .addAllLocationProofs(locationProofMessages)
+                .setServerId(Crypto.encryptAES(secretKeySpec, String.valueOf(serverId)))
+                .setOuterSignature(Crypto.sign(outerSignatureContent, this.getPrivateKey()))
                 .build();
     }
 
@@ -236,14 +239,17 @@ public class Client extends AbstractClient {
                     if (finishLatch.getCount() == 0) return;
 
                     try {
+                        ObjectMapper objectMapper = new ObjectMapper();
                         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
-                        String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getContent());
-                        // TODO SERVER PUB
-                        if (Crypto.verify(locationProverContent, response.getSignature(), getServerPublicKey(0))) {
-                            System.out.println("user" + getClientId() + ": " + locationProverContent);
+                        String responseString = Crypto.decryptAES(secretKeySpec, response.getContent());
+                        SubmitLocationReportResponse submitResponse = objectMapper.readValue(responseString, SubmitLocationReportResponse.class);
+                        String signatureString = responseString + secretKeySpec.toString();
+
+                        if (Crypto.verify(signatureString, response.getSignature(), getServerPublicKey(submitResponse.getServerId()))) {
+                            System.out.println("user" + getClientId() + ": Received submit location report response -> " + submitResponse.isOk());
                             finishLatch.countDown();
                         }
-                    } catch (GeneralSecurityException ex) {
+                    } catch (JsonProcessingException|GeneralSecurityException ex) {
                         System.err.println("user" + getClientId() + ": caught processing exception while submitting report");
                     }
                 }

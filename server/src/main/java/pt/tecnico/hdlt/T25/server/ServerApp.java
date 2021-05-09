@@ -17,7 +17,7 @@ public class ServerApp {
 
 		if (args.length < 7) {
 			System.err.println("Argument(s) missing!");
-			System.err.printf("Usage: java %s serverId numberOfUsers step maxByzantineUsers maxNearbyByzantineUsers%n", io.grpc.Server.class.getName());
+			System.err.printf("Usage: java %s serverId numberOfUsers step maxByzantineUsers maxNearbyByzantineUsers maxReplicas maxByzantineReplicas%n", io.grpc.Server.class.getName());
 			return;
 		}
 
