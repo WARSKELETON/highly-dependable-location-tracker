@@ -240,7 +240,7 @@ abstract class AbstractClient {
     }
 
     public void checkLatestSeqNumberRegular() throws GeneralSecurityException, InterruptedException {
-        final CountDownLatch finishLatch = new CountDownLatch((maxReplicas + maxByzantineReplicas) / 2 + 1);
+        final CountDownLatch finishLatch = new CountDownLatch(maxReplicas);
 
         Consumer<LocationServer.ObtainLatestSeqNumberResponse> requestObserver = new Consumer<>() {
             @Override

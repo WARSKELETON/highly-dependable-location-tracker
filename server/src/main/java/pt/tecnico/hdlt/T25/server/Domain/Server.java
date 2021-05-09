@@ -82,8 +82,6 @@ public class Server {
     private void connectToServers() {
         brbStubs = new HashMap<>();
         for (int i = 0; i < maxReplicas; i++) {
-            if (i == this.id) continue;
-
             int port = SERVER_ORIGINAL_PORT + i;
             String target = "localhost:" + port;
             final ManagedChannel channel = ManagedChannelBuilder.forTarget(target).usePlaintext().build();
@@ -106,6 +104,14 @@ public class Server {
             echos.put(i, new ConcurrentHashMap<>());
             readys.put(i, new ConcurrentHashMap<>());
         }
+    }
+
+    private void cleanBrb(int userId) {
+        sentEcho.put(userId, false);
+        sentReady.put(userId, false);
+        delivered.put(userId, false);
+        echos.put(userId, new ConcurrentHashMap<>());
+        readys.put(userId, new ConcurrentHashMap<>());
     }
 
     private void initializeSeqNumbers() {
@@ -217,11 +223,37 @@ public class Server {
         return mapKey;
     }
 
+    public LocationServer.ObtainLatestSeqNumberResponse obtainLatestSeqNumber(LocationServer.ObtainLatestSeqNumberRequest request) throws GeneralSecurityException, InvalidSignatureException, JsonProcessingException {
+        ObjectMapper objectMapper = new ObjectMapper();
+        SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(request.getKey(), this.privateKey);
+        String requestContent = Crypto.decryptAES(secretKeySpec, request.getContent());
+        SeqNumberMessage seqNumberMessage = objectMapper.readValue(requestContent, SeqNumberMessage.class);
+
+        int clientId = seqNumberMessage.getClientId();
+
+        if (!Crypto.verify(requestContent, request.getSignature(), this.getUserPublicKey(clientId))) {
+            System.out.println("Server: Some user tried to illegitimately request user" + clientId + " sequence number");
+            throw new InvalidSignatureException();
+        }
+
+        seqNumbers.putIfAbsent(clientId, 0);
+        int currentSeqNumber = seqNumbers.get(clientId);
+
+        byte[] encodedKey = Crypto.generateSecretKey();
+        SecretKeySpec newSecretKeySpec = new SecretKeySpec(encodedKey, "AES");
+        SeqNumberMessage seqNumberResponse = new SeqNumberMessage(clientId, this.id, currentSeqNumber);
+
+        return LocationServer.ObtainLatestSeqNumberResponse.newBuilder()
+                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getUserPublicKey(clientId)))
+                .setContent(Crypto.encryptAES(newSecretKeySpec, seqNumberResponse.toJsonString()))
+                .setSignature(Crypto.sign(seqNumberResponse.toJsonString(), this.privateKey))
+                .build();
+    }
+
     public void handleReady(ByzantineReliableBroadcast.RequestMsg ready) throws GeneralSecurityException, JsonProcessingException, InvalidSignatureException {
         ObjectMapper objectMapper = new ObjectMapper();
         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(ready.getKey(), this.privateKey);
         int serverIdSender = Integer.parseInt(Crypto.decryptAES(secretKeySpec, ready.getServerIdSender()));
-        int serverIdReceiver = Integer.parseInt(Crypto.decryptAES(secretKeySpec, ready.getServerIdSender()));
         String locationProverContent = Crypto.decryptAES(secretKeySpec, ready.getLocationProver().getContent());
         Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
         int sourceClientId = locationProver.getUserId();
@@ -243,26 +275,29 @@ public class Server {
         String reportContent = locationProverContent + locationProofsContent.values().stream().reduce("", String::concat);
         String signatureContent = reportContent + secretKeySpec.toString() + serverIdSender + this.id;
         if (!Crypto.verify(signatureContent, ready.getSignature(), this.getServerPublicKey(serverIdSender))) {
-            System.out.println("Server: Report failed integrity or authentication checks in echo!");
+            System.out.println("Server: Report failed integrity or authentication checks in echo! User" + sourceClientId + " ep " + locationProver.getEp() + " coords " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
             throw new InvalidSignatureException();
         }
 
+        System.out.println("Server" + this.id + ": Received a ready from server" + serverIdSender + ". User" + sourceClientId + " ep " + locationProver.getEp() + " coords " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
         Integer readykey = getMapKey(sourceClientId, sentReady);
         Integer deliveredKey = getMapKey(sourceClientId, delivered);
 
         synchronized (readykey) {
-            Map<Integer, ByzantineReliableBroadcast.RequestMsg> readysReceived = readys.get(sourceClientId);
+            Map<Integer, ByzantineReliableBroadcast.RequestMsg> readysReceived = readys.get(readykey);
             readysReceived.put(serverIdSender, ready);
             // Have not send ready yet and Got a ready for at least a correct replica -> send Ready
-            if (!sentReady.get(sourceClientId) && countMatches(reportContent, sourceClientId, readysReceived) > maxByzantineReplicas) {
-                sentReady.put(sourceClientId, true);
+            if (!sentReady.get(readykey) && countMatches(reportContent, sourceClientId, readysReceived) > maxByzantineReplicas) {
+                System.out.println("Server" + this.id + ": Received f + 1 readys and have not send ready... Broadcasting Ready! User" + sourceClientId + " ep " + locationProver.getEp() + " coords " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
+                sentReady.put(readykey, true);
                 sendReady(locationProverContent, ready.getLocationProver().getSignature(), locationProofsContent, locationProofsSignatures);
             }
 
             synchronized (deliveredKey) {
                 // Have not delivered and got a byzantine quorum of readys -> deliver
-                if (!delivered.get(sourceClientId) && countMatches(reportContent, sourceClientId, readysReceived) > 2 * maxByzantineReplicas) {
-                    delivered.put(sourceClientId, true);
+                if (!delivered.get(deliveredKey) && countMatches(reportContent, sourceClientId, readysReceived) > 2 * maxByzantineReplicas) {
+                    System.out.println("Server" + this.id + ": Received a byzantine quorum of readys and have not delivered... Delivering! User" + sourceClientId + " ep " + locationProver.getEp() + " coords " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
+                    delivered.put(deliveredKey, true);
                     deliveredKey.notifyAll();
                 }
             }
@@ -338,7 +373,6 @@ public class Server {
         ObjectMapper objectMapper = new ObjectMapper();
         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(echo.getKey(), this.privateKey);
         int serverIdSender = Integer.parseInt(Crypto.decryptAES(secretKeySpec, echo.getServerIdSender()));
-        int serverIdReceiver = Integer.parseInt(Crypto.decryptAES(secretKeySpec, echo.getServerIdSender()));
         String locationProverContent = Crypto.decryptAES(secretKeySpec, echo.getLocationProver().getContent());
         Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
         int sourceClientId = locationProver.getUserId();
@@ -360,51 +394,26 @@ public class Server {
         String reportContent = locationProverContent + locationProofsContent.values().stream().reduce("", String::concat);
         String signatureContent = reportContent + secretKeySpec.toString() + serverIdSender + this.id;
         if (!Crypto.verify(signatureContent, echo.getSignature(), this.getServerPublicKey(serverIdSender))) {
-            System.out.println("Server: Report failed integrity or authentication checks in echo!");
+            System.out.println("Server" + this.id + ": Report failed integrity or authentication checks in echo! User" + sourceClientId + " ep " + locationProver.getEp() + " coords " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
             throw new InvalidSignatureException();
         }
 
+        System.out.println("Server" + this.id + ": Received an echo from server" + serverIdSender + ". User" + sourceClientId + " ep " + locationProver.getEp() + " coords " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
         Integer echokey = getMapKey(sourceClientId, sentEcho);
         Integer readykey = getMapKey(sourceClientId, sentReady);
 
         synchronized (echokey) {
-            Map<Integer, ByzantineReliableBroadcast.RequestMsg> echosReceived = echos.get(sourceClientId);
+            Map<Integer, ByzantineReliableBroadcast.RequestMsg> echosReceived = echos.get(echokey);
             echosReceived.put(serverIdSender, echo);
             synchronized (readykey) {
                 // Have not send ready yet and Byzantine Quorum of Echos -> send Ready
-                if (!sentReady.get(sourceClientId) && countMatches(reportContent, sourceClientId, echosReceived) > (maxReplicas + maxByzantineReplicas) / 2) {
-                    sentReady.put(sourceClientId, true);
+                if (!sentReady.get(readykey) && countMatches(reportContent, sourceClientId, echosReceived) > (maxReplicas + maxByzantineReplicas) / 2) {
+                    System.out.println("Server" + this.id + ": Received a byzantine quorum of echos and have not send ready... Broadcasting Ready! User" + sourceClientId + " ep " + locationProver.getEp() + " coords " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
+                    sentReady.put(readykey, true);
                     sendReady(locationProverContent, echo.getLocationProver().getSignature(), locationProofsContent, locationProofsSignatures);
                 }
             }
         }
-    }
-
-    public LocationServer.ObtainLatestSeqNumberResponse obtainLatestSeqNumber(LocationServer.ObtainLatestSeqNumberRequest request) throws GeneralSecurityException, InvalidSignatureException, JsonProcessingException {
-        ObjectMapper objectMapper = new ObjectMapper();
-        SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(request.getKey(), this.privateKey);
-        String requestContent = Crypto.decryptAES(secretKeySpec, request.getContent());
-        SeqNumberMessage seqNumberMessage = objectMapper.readValue(requestContent, SeqNumberMessage.class);
-
-        int clientId = seqNumberMessage.getClientId();
-
-        if (!Crypto.verify(requestContent, request.getSignature(), this.getUserPublicKey(clientId))) {
-            System.out.println("Server: Some user tried to illegitimately request user" + clientId + " sequence number");
-            throw new InvalidSignatureException();
-        }
-
-        seqNumbers.putIfAbsent(clientId, 0);
-        int currentSeqNumber = seqNumbers.get(clientId);
-
-        byte[] encodedKey = Crypto.generateSecretKey();
-        SecretKeySpec newSecretKeySpec = new SecretKeySpec(encodedKey, "AES");
-        SeqNumberMessage seqNumberResponse = new SeqNumberMessage(clientId, this.id, currentSeqNumber);
-
-        return LocationServer.ObtainLatestSeqNumberResponse.newBuilder()
-                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getUserPublicKey(clientId)))
-                .setContent(Crypto.encryptAES(newSecretKeySpec, seqNumberResponse.toJsonString()))
-                .setSignature(Crypto.sign(seqNumberResponse.toJsonString(), this.privateKey))
-                .build();
     }
 
     private ByzantineReliableBroadcast.RequestMsg buildEchoRequest(LocationReport report, int serverIdReceiver) throws GeneralSecurityException {
@@ -440,7 +449,9 @@ public class Server {
 
     private void broadcastReport(LocationReport report) throws GeneralSecurityException, InterruptedException {
         int sourceClientId = report.getLocationProver().getUserId();
+
         if (!sentEcho.get(sourceClientId)) {
+            System.out.println("Server" + this.id + ": Have not send echo... Broadcasting Echo! User" + sourceClientId + " ep " + report.getLocationProver().getEp() + " coords " + report.getLocationProver().getLatitude() + ", " + report.getLocationProver().getLongitude());
             sentEcho.put(sourceClientId, true);
 
             for (Integer serverId : brbStubs.keySet()) {
@@ -461,10 +472,12 @@ public class Server {
             }
 
             Integer deliverkey = getMapKey(sourceClientId, delivered);
-
             synchronized (deliverkey) {
                 deliverkey.wait();
             }
+
+            // TODO timer
+            cleanBrb(sourceClientId);
         }
     }
 
