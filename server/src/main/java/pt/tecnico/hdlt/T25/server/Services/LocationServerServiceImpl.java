@@ -59,7 +59,7 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 			responseObserver.onError(Status.INVALID_ARGUMENT.withDescription(ex2.getMessage()).asRuntimeException());
 		} catch (InvalidSignatureException ex3) {
 			responseObserver.onError(Status.UNAUTHENTICATED.withDescription(ex3.getMessage()).asRuntimeException());
-		} catch (GeneralSecurityException | IOException ex4) {
+		} catch (GeneralSecurityException | IOException | InterruptedException ex4) {
 			responseObserver.onError(Status.ABORTED.withDescription(ex4.getMessage()).asRuntimeException());
 		}
 	}

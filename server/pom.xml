@@ -31,6 +31,8 @@
 		<step>50</step>
 		<maxByzantineUsers>10</maxByzantineUsers>
 		<maxNearbyByzantineUsers>2</maxNearbyByzantineUsers>
+		<server.maxReplicas>4</server.maxReplicas>
+		<server.maxByzantineReplicas>1</server.maxByzantineReplicas>
 
 	</properties>
 
@@ -93,6 +95,8 @@
 						<argument>${step}</argument>
 						<argument>${maxByzantineUsers}</argument>
 						<argument>${maxNearbyByzantineUsers}</argument>
+						<argument>${server.maxReplicas}</argument>
+						<argument>${server.maxByzantineReplicas}</argument>
 					</arguments>
 				</configuration>
 			</plugin>

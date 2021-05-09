@@ -29,7 +29,7 @@ public class HAClient extends AbstractClient {
         if (!isTest) this.eventLoop();
     }
 
-    public LocationServer.ObtainUsersAtLocationRequest buildObtainUsersAtLocationRequest(int latitude, int longitude, int ep, int currentSeqNumber) throws JsonProcessingException, GeneralSecurityException {
+    public LocationServer.ObtainUsersAtLocationRequest buildObtainUsersAtLocationRequest(int latitude, int longitude, int ep, int currentSeqNumber, int serverId) throws GeneralSecurityException {
         Location usersLocationRequest = new Location(-1, ep, latitude, longitude);
         String requestContent = usersLocationRequest.toJsonString();
         String signatureString = requestContent + currentSeqNumber;
@@ -38,14 +38,14 @@ public class HAClient extends AbstractClient {
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
 
         return LocationServer.ObtainUsersAtLocationRequest.newBuilder()
-                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey()))
+                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey(serverId)))
                 .setContent(Crypto.encryptAES(secretKeySpec, requestContent))
                 .setSignature(Crypto.sign(signatureString, this.getPrivateKey()))
                 .setSeqNumber(Crypto.encryptAES(secretKeySpec, String.valueOf(currentSeqNumber)))
                 .build();
     }
 
-    public List<Location> obtainUsersAtLocationRegular(int latitude, int longitude, int ep) throws JsonProcessingException, GeneralSecurityException, InterruptedException {
+    public List<Location> obtainUsersAtLocationRegular(int latitude, int longitude, int ep) throws GeneralSecurityException, InterruptedException {
         List<Location> locations = new ArrayList<>();
 
         final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
@@ -59,7 +59,8 @@ public class HAClient extends AbstractClient {
                     try {
                         ObjectMapper objectMapper = new ObjectMapper();
                         for (LocationServer.ObtainLocationReportResponse report : response.getLocationReportsList()) {
-                            if (verifyLocationReport(report)) {
+                            // TODO Fix verify for users
+                            if (verifyLocationReport(0, 0, report)) {
                                 SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(report.getKey(), getPrivateKey());
                                 String locationProverContent = Crypto.decryptAES(secretKeySpec, report.getLocationProver().getContent());
                                 locations.add(objectMapper.readValue(locationProverContent, Location.class));
@@ -74,7 +75,7 @@ public class HAClient extends AbstractClient {
         };
 
         for (int serverId : getLocationServerServiceStub().keySet()) {
-            LocationServer.ObtainUsersAtLocationRequest request = buildObtainUsersAtLocationRequest(latitude, longitude, ep, this.getSeqNumbers().get(serverId));
+            LocationServer.ObtainUsersAtLocationRequest request = buildObtainUsersAtLocationRequest(latitude, longitude, ep, this.getSeqNumbers().get(serverId), serverId);
             obtainUsersAtLocation(getLocationServerServiceStub().get(serverId), request, requestObserver);
         }
 

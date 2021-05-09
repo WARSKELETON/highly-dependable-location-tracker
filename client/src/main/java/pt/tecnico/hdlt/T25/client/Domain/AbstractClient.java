@@ -35,7 +35,7 @@ abstract class AbstractClient {
     private int maxReplicas;
     private int maxByzantineReplicas;
     private PrivateKey privateKey;
-    private PublicKey serverPublicKey;
+    private Map<Integer, PublicKey> serverPublicKeys;
     private Map<Integer, PublicKey> publicKeys;
     private SystemInfo systemInfo;
     private Map<Integer, LocationServerServiceGrpc.LocationServerServiceStub> locationServerServiceStubs;
@@ -49,11 +49,9 @@ abstract class AbstractClient {
         this.maxReplicas = maxReplicas;
         this.maxByzantineReplicas = maxByzantineReplicas;
         this.initializeSeqNumbers();
-        this.publicKeys = new HashMap<>();
-        this.locationServerServiceStubs = new HashMap<>();
-        this.serverPublicKey = Crypto.getPub("server-pub.key");
-        this.connectToServers();
         this.loadPublicKeys();
+        this.locationServerServiceStubs = new HashMap<>();
+        this.connectToServers();
         this.updateEpochs();
     }
 
@@ -106,14 +104,6 @@ abstract class AbstractClient {
 
     void setPrivateKey(PrivateKey privateKey) {
         this.privateKey = privateKey;
-    }
-
-    PublicKey getServerPublicKey() {
-        return serverPublicKey;
-    }
-
-    void setServerPublicKey(PublicKey serverPublicKey) {
-        this.serverPublicKey = serverPublicKey;
     }
 
     Map<Integer, PublicKey> getPublicKeys() {
@@ -207,7 +197,8 @@ abstract class AbstractClient {
         // Verify inner report client signature and outer server signature
         String reportContentString = locationProverContent + locationProofsContent.stream().reduce("", String::concat);
         String responseContentString = reportContentString + receivedSeqNumber + serverId;
-        if (!Crypto.verify(reportContentString, response.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId())) || !Crypto.verify(responseContentString, response.getServerSignature(), this.getServerPublicKey())) {
+        // TODO SERVER PUB
+        if (!Crypto.verify(reportContentString, response.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId())) || !Crypto.verify(responseContentString, response.getServerSignature(), this.getServerPublicKey(0))) {
             System.out.println("user" + getClientId() + ": Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
             return false;
         }
@@ -225,7 +216,7 @@ abstract class AbstractClient {
         int serverId = seqNumberResponse.getServerId();
         int seqNumber = seqNumberResponse.getSeqNumber();
 
-        if (!Crypto.verify(requestContent, response.getSignature(), this.serverPublicKey) || clientId != getClientId()) {
+        if (!Crypto.verify(requestContent, response.getSignature(), this.getServerPublicKey(serverId)) || clientId != getClientId()) {
             System.out.println("user" + getClientId() + ": invalid sequence number response");
             return false;
         } else {
@@ -243,7 +234,7 @@ abstract class AbstractClient {
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
 
         return LocationServer.ObtainLatestSeqNumberRequest.newBuilder()
-                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.serverPublicKey))
+                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey(serverId)))
                 .setContent(Crypto.encryptAES(secretKeySpec, requestContent))
                 .setSignature(Crypto.sign(requestContent, this.privateKey))
                 .build();
@@ -325,8 +316,9 @@ abstract class AbstractClient {
             );
         }
 
+        // TODO SERVER PUB
         return LocationServer.SubmitLocationReportRequest.newBuilder()
-                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey()))
+                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey(0)))
                 .setLocationProver(
                         LocationServer.LocationMessage.newBuilder()
                                 .setContent(Crypto.encryptAES(secretKeySpec, locationProverContent))
@@ -346,10 +338,11 @@ abstract class AbstractClient {
                 synchronized (finishLatch) {
                     if (finishLatch.getCount() == 0) return;
 
+                    // TODO SERVER PUB
                     try {
                         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
                         String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getContent());
-                        if (Crypto.verify(locationProverContent, response.getSignature(), getServerPublicKey())) {
+                        if (Crypto.verify(locationProverContent, response.getSignature(), getServerPublicKey(0))) {
                             System.out.println("user" + getClientId() + ": " + locationProverContent);
                             finishLatch.countDown();
                         }
@@ -444,7 +437,7 @@ abstract class AbstractClient {
         };
 
         for (int serverId : locationServerServiceStubs.keySet()) {
-            LocationServer.ObtainLocationReportRequest request = this.buildObtainLocationReportRequest(userId, ep, this.seqNumbers.get(serverId));
+            LocationServer.ObtainLocationReportRequest request = this.buildObtainLocationReportRequest(userId, ep, this.seqNumbers.get(serverId), serverId);
             obtainLocationReport(locationServerServiceStubs.get(serverId), request, requestObserver);
         }
 
@@ -461,7 +454,8 @@ abstract class AbstractClient {
             }
         }
 
-        return locations.get(0);
+        // TODO Return location
+        return null;
     }
 
     public void obtainLocationReport(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.ObtainLocationReportRequest request, Consumer<LocationServer.ObtainLocationReportResponse> callback) {
@@ -489,7 +483,7 @@ abstract class AbstractClient {
         }
     }
 
-    public LocationServer.ObtainLocationReportRequest buildObtainLocationReportRequest(int userId, int ep, int currentSeqNumber) throws GeneralSecurityException {
+    public LocationServer.ObtainLocationReportRequest buildObtainLocationReportRequest(int userId, int ep, int currentSeqNumber, int serverId) throws GeneralSecurityException {
         LocationReportRequest locationRequest = new LocationReportRequest(userId, ep, 0, 0, this.clientId, currentSeqNumber);
         String requestContent = locationRequest.toJsonString();
 
@@ -497,17 +491,29 @@ abstract class AbstractClient {
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
 
         return LocationServer.ObtainLocationReportRequest.newBuilder()
-                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.serverPublicKey))
+                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey(serverId)))
                 .setContent(Crypto.encryptAES(secretKeySpec, requestContent))
                 .setSignature(Crypto.sign(requestContent, this.privateKey))
                 .build();
     }
 
     private void loadPublicKeys() throws GeneralSecurityException {
+        this.publicKeys = new HashMap<>();
+        this.serverPublicKeys = new HashMap<>();
+
         for (int i = 0; i < systemInfo.getNumberOfUsers(); i++) {
             String fileName = "client" + i + "-pub.key";
             this.publicKeys.put(i, Crypto.getPub(fileName));
         }
+
+        for (int i = 0; i < maxReplicas; i++) {
+            String fileName = "server" + i + "-pub.key";
+            this.publicKeys.put(i, Crypto.getPub(fileName));
+        }
+    }
+
+    PublicKey getServerPublicKey(int serverId) {
+        return serverPublicKeys.get(serverId);
     }
 
     PublicKey getUserPublicKey(int userId) {

@@ -15,7 +15,7 @@ public class ServerApp {
 			System.out.printf("arg[%d] = %s%n", i, args[i]);
 		}
 
-		if (args.length < 5) {
+		if (args.length < 7) {
 			System.err.println("Argument(s) missing!");
 			System.err.printf("Usage: java %s serverId numberOfUsers step maxByzantineUsers maxNearbyByzantineUsers%n", io.grpc.Server.class.getName());
 			return;
@@ -26,9 +26,11 @@ public class ServerApp {
 		final int step = Integer.parseInt(args[2]);
 		final int maxByzantineUsers = Integer.parseInt(args[3]);
 		final int maxNearbyByzantineUsers = Integer.parseInt(args[4]);
+		final int maxReplicas = Integer.parseInt(args[5]);
+		final int maxByzantineReplicas = Integer.parseInt(args[6]);
 
 		try {
-			new Server(serverId, numberOfUsers, step, maxByzantineUsers, maxNearbyByzantineUsers);
+			new Server(serverId, numberOfUsers, step, maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas);
 		} catch (IOException ex) {
 			System.err.println("Server crashed due to some internal error.");
 		} catch (GeneralSecurityException ex2) {

@@ -5,16 +5,7 @@ syntax = "proto3";
 import "google/protobuf/empty.proto";
 package pt.tecnico.hdlt.T25;
 
-message EchoRequest {
-  string key = 1;
-  LocationMsg locationProver = 2;
-  repeated LocationMsg locationProofs = 3;
-  string serverIdSender = 4;
-  string serverIdReceiver = 5;
-  string signature = 6;
-}
-
-message ReadyRequest {
+message RequestMsg {
   string key = 1;
   LocationMsg locationProver = 2;
   repeated LocationMsg locationProofs = 3;
@@ -29,6 +20,6 @@ message LocationMsg {
 }
 
 service ByzantineReliableBroadcastService {
-  rpc echo(EchoRequest) returns (google.protobuf.Empty);
-  rpc ready(ReadyRequest) returns (google.protobuf.Empty);
+  rpc echo(RequestMsg) returns (google.protobuf.Empty);
+  rpc ready(RequestMsg) returns (google.protobuf.Empty);
 }

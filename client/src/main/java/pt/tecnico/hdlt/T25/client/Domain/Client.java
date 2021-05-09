@@ -190,7 +190,7 @@ public class Client extends AbstractClient {
         }
     }
 
-    public LocationServer.SubmitLocationReportRequest buildSubmitLocationReportRequest(int ep) throws InterruptedException, GeneralSecurityException {
+    public LocationServer.SubmitLocationReportRequest buildSubmitLocationReportRequest(int ep, int serverId) throws InterruptedException, GeneralSecurityException {
         LocationReport locationReport = locationReports.get(ep);
         Location myLocation = this.getMyLocation(ep);
 
@@ -216,7 +216,7 @@ public class Client extends AbstractClient {
         String content = locationReport.getLocationProver().toJsonString();
 
         return LocationServer.SubmitLocationReportRequest.newBuilder()
-                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey()))
+                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey(serverId)))
                 .setLocationProver(
                         LocationServer.LocationMessage.newBuilder()
                                 .setContent(Crypto.encryptAES(secretKeySpec, content))
@@ -227,9 +227,7 @@ public class Client extends AbstractClient {
     }
 
     public void submitLocationReportAtomic(int ep) throws InterruptedException, GeneralSecurityException {
-        LocationServer.SubmitLocationReportRequest request = buildSubmitLocationReportRequest(ep);
-
-        final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas())/2 + 1);
+        final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
 
         Consumer<LocationServer.SubmitLocationReportResponse> requestOnSuccessObserver = new Consumer<>() {
             @Override
@@ -240,7 +238,8 @@ public class Client extends AbstractClient {
                     try {
                         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
                         String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getContent());
-                        if (Crypto.verify(locationProverContent, response.getSignature(), getServerPublicKey())) {
+                        // TODO SERVER PUB
+                        if (Crypto.verify(locationProverContent, response.getSignature(), getServerPublicKey(0))) {
                             System.out.println("user" + getClientId() + ": " + locationProverContent);
                             finishLatch.countDown();
                         }
@@ -261,6 +260,7 @@ public class Client extends AbstractClient {
         };
 
         for (int serverId : getLocationServerServiceStub().keySet()) {
+            LocationServer.SubmitLocationReportRequest request = buildSubmitLocationReportRequest(ep, serverId);
             submitLocationReport(getLocationServerServiceStub().get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver);
         }
 
