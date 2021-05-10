@@ -422,12 +422,17 @@ public class Client extends AbstractClient {
         String[] args = cmd.split(" ");
 
         if (args.length < 2) {
+            System.out.println("Invalid number of arguments.");
             return;
         }
 
         try {
             switch (args[0]) {
                 case LOCATION_PROOF_REQUEST: {
+                    if (args.length < 4) {
+                        System.out.println("Invalid number of arguments. Try, proof ${ep} ${latitude} ${longitude}");
+                        break;
+                    }
                     int ep = Integer.parseInt(args[1]);
                     int latitude = Integer.parseInt(args[2]);
                     int longitude = Integer.parseInt(args[3]);
@@ -456,7 +461,7 @@ public class Client extends AbstractClient {
                     break;
                 }
                 default:
-                    System.out.println("Invalid operation or invalid number of arguments. Possible operations are proof, submit and obtain.");
+                    System.out.println("Invalid operation or invalid number of arguments. Possible operations are proof, submit, obtain and requestProofs.");
                     break;
             }
         } catch (InterruptedException ex) {
