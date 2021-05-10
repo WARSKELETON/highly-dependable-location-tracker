@@ -28,6 +28,8 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 public class Server {
     private String SERVER_RECOVERY_FILE_PATH;
@@ -45,7 +47,7 @@ public class Server {
 
     private Map<Integer, Boolean> sentEcho;
     private Map<Integer, Boolean> sentReady;
-    private Map<Integer, Boolean> delivered;
+    private Map<Integer, CountDownLatch> delivered;
     private Map<Integer, Map<Integer, ByzantineReliableBroadcast.RequestMsg>> echos;
     private Map<Integer, Map<Integer, ByzantineReliableBroadcast.RequestMsg>> readys;
 
@@ -70,7 +72,7 @@ public class Server {
         this.maxByzantineReplicas = maxByzantineReplicas;
         this.initializeSeqNumbers();
         this.initializeBrb();
-        this.locationReports = new HashMap<>();
+        this.locationReports = new ConcurrentHashMap<>();
         this.privateKey = Crypto.getPriv("server" + this.id + "-priv.key");
         this.loadPublicKeys();
         this.loadPreviousState();
@@ -100,7 +102,7 @@ public class Server {
         for (int i = 0; i < numberOfUsers; i++) {
             sentEcho.put(i, false);
             sentReady.put(i, false);
-            delivered.put(i, false);
+            delivered.put(i, new CountDownLatch(1));
             echos.put(i, new ConcurrentHashMap<>());
             readys.put(i, new ConcurrentHashMap<>());
         }
@@ -109,7 +111,7 @@ public class Server {
     private void cleanBrb(int userId) {
         sentEcho.put(userId, false);
         sentReady.put(userId, false);
-        delivered.put(userId, false);
+        delivered.put(userId, new CountDownLatch(1));
         echos.put(userId, new ConcurrentHashMap<>());
         readys.put(userId, new ConcurrentHashMap<>());
     }
@@ -223,6 +225,16 @@ public class Server {
         return mapKey;
     }
 
+    private Integer getMapKeyFromDelivered(int userId, Map<Integer, CountDownLatch> map) {
+        Integer mapKey = null;
+        for (Integer clientId : map.keySet()) {
+            if (clientId == userId) {
+                mapKey = clientId;
+            }
+        }
+        return mapKey;
+    }
+
     public LocationServer.ObtainLatestSeqNumberResponse obtainLatestSeqNumber(LocationServer.ObtainLatestSeqNumberRequest request) throws GeneralSecurityException, InvalidSignatureException, JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(request.getKey(), this.privateKey);
@@ -250,7 +262,7 @@ public class Server {
                 .build();
     }
 
-    public void handleReady(ByzantineReliableBroadcast.RequestMsg ready) throws GeneralSecurityException, JsonProcessingException, InvalidSignatureException {
+    public void handleReady(ByzantineReliableBroadcast.RequestMsg ready) throws GeneralSecurityException, IOException, InvalidSignatureException {
         ObjectMapper objectMapper = new ObjectMapper();
         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(ready.getKey(), this.privateKey);
         int serverIdSender = Integer.parseInt(Crypto.decryptAES(secretKeySpec, ready.getServerIdSender()));
@@ -281,7 +293,7 @@ public class Server {
 
         System.out.println("Server" + this.id + ": Received a ready from server" + serverIdSender + ". User" + sourceClientId + " ep " + locationProver.getEp() + " coords " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
         Integer readykey = getMapKey(sourceClientId, sentReady);
-        Integer deliveredKey = getMapKey(sourceClientId, delivered);
+        Integer deliveredKey = getMapKeyFromDelivered(sourceClientId, delivered);
 
         synchronized (readykey) {
             Map<Integer, ByzantineReliableBroadcast.RequestMsg> readysReceived = readys.get(readykey);
@@ -295,10 +307,9 @@ public class Server {
 
             synchronized (deliveredKey) {
                 // Have not delivered and got a byzantine quorum of readys -> deliver
-                if (!delivered.get(deliveredKey) && countMatches(reportContent, sourceClientId, readysReceived) > 2 * maxByzantineReplicas) {
+                if (delivered.get(deliveredKey).getCount() > 0 && countMatches(reportContent, sourceClientId, readysReceived) > 2 * maxByzantineReplicas) {
                     System.out.println("Server" + this.id + ": Received a byzantine quorum of readys and have not delivered... Delivering! User" + sourceClientId + " ep " + locationProver.getEp() + " coords " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
-                    delivered.put(deliveredKey, true);
-                    deliveredKey.notifyAll();
+                    delivered.get(deliveredKey).countDown();
                 }
             }
         }
@@ -345,6 +356,7 @@ public class Server {
 
                 @Override
                 public void onError(Throwable throwable) {
+                    System.out.println("Ready to server" + serverId + " " + throwable.getMessage());
                 }
 
                 @Override
@@ -447,7 +459,7 @@ public class Server {
                 .build();
     }
 
-    private void broadcastReport(LocationReport report) throws GeneralSecurityException, InterruptedException {
+    private boolean broadcastReport(LocationReport report) throws GeneralSecurityException, InterruptedException {
         int sourceClientId = report.getLocationProver().getUserId();
 
         if (!sentEcho.get(sourceClientId)) {
@@ -463,6 +475,7 @@ public class Server {
 
                     @Override
                     public void onError(Throwable throwable) {
+                        System.out.println("Echo to server" + serverId + " " + throwable.getMessage());
                     }
 
                     @Override
@@ -471,14 +484,36 @@ public class Server {
                 });
             }
 
-            Integer deliverkey = getMapKey(sourceClientId, delivered);
-            synchronized (deliverkey) {
-                deliverkey.wait();
-            }
+            Integer deliverkey = getMapKeyFromDelivered(sourceClientId, delivered);
 
-            // TODO timer
-            cleanBrb(sourceClientId);
+            delivered.get(deliverkey).await(5, TimeUnit.SECONDS);
+
+            synchronized (deliverkey) {
+                return delivered.get(deliverkey).getCount() == 0;
+            }
         }
+
+        return false;
+    }
+
+    private void deliverReport(LocationReport locationReport) throws IOException, DuplicateReportException {
+        Location locationProver = locationReport.getLocationProver();
+        boolean locationReportExists = locationReports.get(new Pair<>(locationProver.getUserId(), locationProver.getEp())) != null;
+
+        if (locationReportExists) {
+            cleanBrb(locationProver.getUserId());
+            throw new DuplicateReportException(locationProver.getUserId(), locationProver.getEp());
+        }
+
+        locationReports.put(new Pair<>(locationProver.getUserId(), locationProver.getEp()), locationReport);
+        this.saveCurrentServerState();
+        cleanBrb(locationProver.getUserId());
+    }
+
+    private boolean reportMatchesExistent(LocationReport locationReport) {
+        LocationReport existentReport = locationReports.get(new Pair<>(locationReport.getLocationProver().getUserId(), locationReport.getLocationProver().getEp()));
+
+        return existentReport.getLocationProverSignature().equals(locationReport.getLocationProverSignature());
     }
 
     public LocationServer.SubmitLocationReportResponse submitLocationReport(LocationServer.SubmitLocationReportRequest report) throws IOException, GeneralSecurityException, DuplicateReportException, InvalidSignatureException, InvalidNumberOfProofsException, InterruptedException {
@@ -489,9 +524,6 @@ public class Server {
         String locationProverContent = Crypto.decryptAES(secretKeySpec, report.getLocationProver().getContent());
 
         Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
-        // Duplicate location reports are deemed illegitimate
-        boolean locationReportExists = locationReports.get(new Pair<>(locationProver.getUserId(), locationProver.getEp())) != null;
-        if (locationReportExists) throw new DuplicateReportException(locationProver.getUserId(), locationProver.getEp());
 
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
@@ -525,9 +557,19 @@ public class Server {
 
         if (witnessIds.size() >= maxByzantineUsers) {
             LocationReport locationReport = new LocationReport(locationProver, report.getLocationProver().getSignature(), locationProofsContent, locationProofsSignatures);
-            broadcastReport(locationReport);
-            locationReports.put(new Pair<>(locationProver.getUserId(), locationProver.getEp()), locationReport);
-            this.saveCurrentServerState();
+            // Duplicate location reports are deemed illegitimate
+            boolean locationReportExists = locationReports.get(new Pair<>(locationProver.getUserId(), locationProver.getEp())) != null;
+            if (locationReportExists && !reportMatchesExistent(locationReport)) {
+                throw new DuplicateReportException(locationProver.getUserId(), locationProver.getEp());
+            }
+
+            if (!broadcastReport(locationReport)) {
+                cleanBrb(locationProver.getUserId());
+                System.out.println("Server: Failed to submit report! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+                return buildSubmitLocationReportResponse(false, locationProver.getUserId());
+            }
+            deliverReport(locationReport);
+
             System.out.println("Server: Report submitted with success! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
             return buildSubmitLocationReportResponse(true, locationProver.getUserId());
         }

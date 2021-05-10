@@ -1,6 +1,8 @@
 package pt.tecnico.hdlt.T25.server.Services;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.protobuf.Empty;
+import io.grpc.Context;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import pt.tecnico.hdlt.T25.ByzantineReliableBroadcast;
@@ -22,29 +24,39 @@ public class ByzantineReliableBroadcastServiceImpl extends ByzantineReliableBroa
 
     @Override
     public void echo(ByzantineReliableBroadcast.RequestMsg request, StreamObserver<Empty> responseObserver) {
-        try {
-            locationServer.handleEcho(request);
+        Context ctx = Context.current().fork();
+        ctx.run(() -> {
+            try {
+                locationServer.handleEcho(request);
+            } catch (GeneralSecurityException e) {
+                e.printStackTrace();
+            } catch (InvalidSignatureException e) {
+                e.printStackTrace();
+            } catch (JsonProcessingException e) {
+                e.printStackTrace();
+            }
+        });
 
-            responseObserver.onNext(Empty.newBuilder().build());
-            responseObserver.onCompleted();
-        } catch (InvalidSignatureException ex3) {
-            responseObserver.onError(Status.UNAUTHENTICATED.withDescription(ex3.getMessage()).asRuntimeException());
-        } catch (GeneralSecurityException | IOException ex4) {
-            responseObserver.onError(Status.ABORTED.withDescription(ex4.getMessage()).asRuntimeException());
-        }
+        responseObserver.onNext(Empty.newBuilder().build());
+        responseObserver.onCompleted();
     }
 
     @Override
     public void ready(ByzantineReliableBroadcast.RequestMsg request, StreamObserver<Empty> responseObserver) {
-        try {
-            locationServer.handleReady(request);
+        Context ctx = Context.current().fork();
+        ctx.run(() -> {
+            try {
+                locationServer.handleReady(request);
+            } catch (GeneralSecurityException e) {
+                e.printStackTrace();
+            } catch (InvalidSignatureException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
 
-            responseObserver.onNext(Empty.newBuilder().build());
-            responseObserver.onCompleted();
-        } catch (InvalidSignatureException ex3) {
-            responseObserver.onError(Status.UNAUTHENTICATED.withDescription(ex3.getMessage()).asRuntimeException());
-        } catch (GeneralSecurityException | IOException ex4) {
-            responseObserver.onError(Status.ABORTED.withDescription(ex4.getMessage()).asRuntimeException());
-        }
+        responseObserver.onNext(Empty.newBuilder().build());
+        responseObserver.onCompleted();
     }
 }

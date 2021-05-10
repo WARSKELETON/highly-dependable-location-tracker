@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
 import pt.tecnico.hdlt.T25.LocationServer;
@@ -22,6 +23,7 @@ import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import static io.grpc.Status.ALREADY_EXISTS;
 import static io.grpc.Status.DEADLINE_EXCEEDED;
 
 abstract class AbstractClient {
@@ -363,11 +365,12 @@ abstract class AbstractClient {
                 synchronized (finishLatch) {
                     if (finishLatch.getCount() == 0) return;
 
-                    // TODO IF NOT_FOUND or DUPLICATE decrease finishLatch
-                    finishLatch.countDown();
+                    if (throwable.getMessage().contains("ALREADY_EXISTS")) {
+                        finishLatch.countDown();
+                    }
+                    System.out.println(throwable.getMessage());
                 }
             }
-
         };
 
         for (int serverId : locationServerServiceStubs.keySet()) {

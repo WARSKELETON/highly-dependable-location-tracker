@@ -245,9 +245,11 @@ public class Client extends AbstractClient {
                         SubmitLocationReportResponse submitResponse = objectMapper.readValue(responseString, SubmitLocationReportResponse.class);
                         String signatureString = responseString + secretKeySpec.toString();
 
-                        if (Crypto.verify(signatureString, response.getSignature(), getServerPublicKey(submitResponse.getServerId()))) {
+                        if (Crypto.verify(signatureString, response.getSignature(), getServerPublicKey(submitResponse.getServerId())) && submitResponse.isOk()) {
                             System.out.println("user" + getClientId() + ": Received submit location report response -> " + submitResponse.isOk());
                             finishLatch.countDown();
+                        } else if (Crypto.verify(signatureString, response.getSignature(), getServerPublicKey(submitResponse.getServerId())) && !submitResponse.isOk()) {
+                            System.out.println("user" + getClientId() + ": Received submit location report not ok response -> " + submitResponse.isOk());
                         }
                     } catch (JsonProcessingException|GeneralSecurityException ex) {
                         System.err.println("user" + getClientId() + ": caught processing exception while submitting report");
@@ -258,9 +260,14 @@ public class Client extends AbstractClient {
 
         Consumer<Throwable> requestOnErrorObserver = new Consumer<>() {
             @Override
-            public void accept(Throwable throwable)  {
+            public void accept(Throwable throwable) {
                 synchronized (finishLatch) {
-                    finishLatch.countDown();
+                    if (finishLatch.getCount() == 0) return;
+
+                    if (throwable.getMessage().contains("ALREADY_EXISTS")) {
+                        System.out.println("user" + getClientId() + ": Duplicate report!");
+                        finishLatch.countDown();
+                    }
                 }
             }
         };
@@ -271,6 +278,13 @@ public class Client extends AbstractClient {
         }
 
         finishLatch.await(10, TimeUnit.SECONDS);
+
+        if (finishLatch.getCount() == 0) {
+            System.out.println("user" + getClientId() + ": Finished submission!");
+        } else {
+            System.out.println("user" + getClientId() + ": Retrying submit report!");
+            submitLocationReportAtomic(ep);
+        }
     }
 
     @Override
