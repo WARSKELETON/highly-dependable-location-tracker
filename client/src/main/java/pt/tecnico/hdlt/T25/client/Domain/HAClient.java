@@ -74,9 +74,9 @@ public class HAClient extends AbstractClient {
             }
         };
 
-        for (int serverId : getLocationServerServiceStub().keySet()) {
+        for (int serverId : getLocationServerServiceStubs().keySet()) {
             LocationServer.ObtainUsersAtLocationRequest request = buildObtainUsersAtLocationRequest(latitude, longitude, ep, this.getSeqNumbers().get(serverId), serverId);
-            obtainUsersAtLocation(getLocationServerServiceStub().get(serverId), request, requestObserver);
+            obtainUsersAtLocation(getLocationServerServiceStubs().get(serverId), request, requestObserver);
         }
 
         finishLatch.await(10, TimeUnit.SECONDS);

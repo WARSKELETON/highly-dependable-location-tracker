@@ -101,7 +101,7 @@ public class SystemIT extends TestBase {
         }
 
         System.out.println("Man in the middle tries to obtain same report.");
-        LocationServer.ObtainLocationReportResponse response = manInTheMiddle.getLocationServerServiceStub().obtainLocationReport(request);
+        LocationServer.ObtainLocationReportResponse response = manInTheMiddle.getLocationServerServiceStubs().obtainLocationReport(request);
         PrivateKey privateKey = manInTheMiddle.getPrivateKey();
 
         if (response != null) {

@@ -107,4 +107,28 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 			responseObserver.onError(Status.ABORTED.withDescription(ex2.getMessage()).asRuntimeException());
 		}
 	}
+
+    @Override
+    public void requestMyProofs(LocationServer.RequestMyProofsRequest request, StreamObserver<LocationServer.RequestMyProofsResponse> responseObserver) {
+        try {
+            if (Context.current().isCancelled()) {
+                System.out.println("TIMEOUT SERVER");
+                responseObserver.onError(Status.CANCELLED.asRuntimeException());
+                return;
+            }
+            LocationServer.RequestMyProofsResponse response = locationServer.requestMyProofs(request);
+
+            responseObserver.onNext(response);
+            responseObserver.onCompleted();
+        } catch (StaleException ex) {
+            System.out.println("StaleException" + ex.getMessage());
+            responseObserver.onError(Status.FAILED_PRECONDITION.withDescription(ex.getMessage()).asRuntimeException());
+        } catch (InvalidSignatureException ex) {
+            System.out.println("InvalidSignatureException" + ex.getMessage());
+            responseObserver.onError(Status.PERMISSION_DENIED.withDescription(ex.getMessage()).asRuntimeException());
+        } catch (GeneralSecurityException | IOException ex2) {
+            System.out.println("GeneralSecurityException" + ex2.getMessage());
+            responseObserver.onError(Status.ABORTED.withDescription(ex2.getMessage()).asRuntimeException());
+        }
+    }
 }

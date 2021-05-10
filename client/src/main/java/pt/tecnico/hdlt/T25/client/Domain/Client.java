@@ -1,10 +1,10 @@
 package pt.tecnico.hdlt.T25.client.Domain;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.*;
 import io.grpc.stub.StreamObserver;
+import org.javatuples.Pair;
 import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.LocationServerServiceGrpc;
 import pt.tecnico.hdlt.T25.Proximity;
@@ -28,6 +28,7 @@ public class Client extends AbstractClient {
     static final String LOCATION_PROOF_REQUEST = "proof";
     static final String SUBMIT_LOCATION_REPORT = "submit";
     static final String OBTAIN_LOCATION_REPORT = "obtain";
+    static final String REQUEST_MY_PROOFS = "requestProofs";
     private static final int CLIENT_ORIGINAL_PORT = 8000;
 
     private final int maxNearbyByzantineUsers;
@@ -93,15 +94,19 @@ public class Client extends AbstractClient {
             ObjectMapper objectMapper = new ObjectMapper();
             LocationProof locationProof = objectMapper.readValue(content, LocationProof.class);
 
-            return locationProof.getEp() == originalLocationProof.getEp() &&
-                    locationProof.getUserId() == originalLocationProof.getUserId() &&
-                    locationProof.getLatitude() == originalLocationProof.getLatitude() &&
-                    locationProof.getLongitude() == originalLocationProof.getLongitude() &&
-                    locationProof.getWitnessId() == originalLocationProof.getWitnessId();
+            return areLocationProofsEqual(locationProof, originalLocationProof);
         } catch (JsonProcessingException ex) {
             System.err.println("Failed to process JSON in proof response.");
         }
         return false;
+    }
+
+    boolean areLocationProofsEqual(LocationProof locationProof1, LocationProof locationProof2) {
+        return locationProof1.getEp() == locationProof2.getEp() &&
+                locationProof1.getUserId() == locationProof2.getUserId() &&
+                locationProof1.getLatitude() == locationProof2.getLatitude() &&
+                locationProof1.getLongitude() == locationProof2.getLongitude() &&
+                locationProof1.getWitnessId() == locationProof2.getWitnessId();
     }
 
     boolean createLocationReport(int clientId, int ep, int latitude, int longitude) throws InterruptedException {
@@ -265,15 +270,136 @@ public class Client extends AbstractClient {
             }
         };
 
-        for (int serverId : getLocationServerServiceStub().keySet()) {
+        for (int serverId : getLocationServerServiceStubs().keySet()) {
             LocationServer.SubmitLocationReportRequest request = buildSubmitLocationReportRequest(ep, serverId);
-            submitLocationReport(getLocationServerServiceStub().get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver);
+            submitLocationReport(getLocationServerServiceStubs().get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver);
         }
 
         finishLatch.await(10, TimeUnit.SECONDS);
     }
 
-    @Override
+    private LocationServer.RequestMyProofsRequest buildRequestMyProofsRequest(int userId, ArrayList<Integer> eps, int currentSeqNumber, int serverId) throws GeneralSecurityException {
+        ProofsRequest proofsRequest = new ProofsRequest(userId, eps, currentSeqNumber, serverId);
+        String requestContent = proofsRequest.toJsonString();
+
+        byte[] encodedKey = Crypto.generateSecretKey();
+        SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
+
+        String signatureString = requestContent + secretKeySpec.toString();
+
+        return LocationServer.RequestMyProofsRequest.newBuilder()
+                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey(serverId)))
+                .setContent(Crypto.encryptAES(secretKeySpec, requestContent))
+                .setSignature(Crypto.sign(signatureString, this.getPrivateKey()))
+                .build();
+    }
+
+    private Map<Pair<Integer, Integer>, LocationProof> verifyMyProofsResponse(int clientId, List<Integer> eps, LocationServer.RequestMyProofsResponse response) throws GeneralSecurityException, JsonProcessingException {
+        Map<Pair<Integer, Integer>, LocationProof> locationProofs = new HashMap<>();
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), this.getPrivateKey());
+        if (secretKeySpec == null) return null;
+
+        int receivedSeqNumber = Integer.parseInt(Crypto.decryptAES(secretKeySpec, response.getSeqNumber()));
+        int serverId = Integer.parseInt(Crypto.decryptAES(secretKeySpec, response.getServerId()));
+        int currentSeqNumber = this.getSeqNumbers().get(serverId);
+
+        if (receivedSeqNumber != currentSeqNumber + 1) {
+            System.out.println("user" + getClientId() + ": Server should not be trusted! Received sequence number " + receivedSeqNumber + " but expected " + currentSeqNumber);
+            return null;
+        }
+
+        for (LocationServer.LocationMessage locationProof : response.getLocationProofsList()) {
+            String locationProofContent = Crypto.decryptAES(secretKeySpec, locationProof.getContent());
+            LocationProof proof = objectMapper.readValue(locationProofContent, LocationProof.class);
+
+            if (proof.getWitnessId() != clientId || !eps.contains(proof.getEp()) || !Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(proof.getWitnessId()))) {
+                System.out.println("user" + getClientId() + ": Server should not be trusted! Returned illegitimate proof! User " + clientId + " did not prove user" + proof.getUserId() + "location at " + proof.getEp() + " " + proof.getLatitude() + ", " + proof.getLongitude());
+                continue;
+            }
+            locationProofs.put(new Pair<>(proof.getUserId(), proof.getEp()), proof);
+        }
+
+        this.getSeqNumbers().put(serverId, currentSeqNumber + 1);
+        return locationProofs;
+    }
+
+    private List<LocationProof> requestMyProofsRegular(int userId, ArrayList<Integer> eps) throws GeneralSecurityException, InterruptedException, JsonProcessingException {
+        Map<Pair<Integer, Integer>, LocationProof> locationProofs = new HashMap<>();
+
+        final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
+
+        Consumer<LocationServer.RequestMyProofsResponse> requestObserver = new Consumer<>() {
+            @Override
+            public void accept(LocationServer.RequestMyProofsResponse response)  {
+                synchronized (finishLatch) {
+                    if (finishLatch.getCount() == 0) return;
+
+                    try {
+                        Map<Pair<Integer, Integer>, LocationProof> proofs = verifyMyProofsResponse(userId, eps, response);
+                        if (proofs != null) {
+                            locationProofs.putAll(proofs);
+                            finishLatch.countDown();
+                        }
+                    } catch (JsonProcessingException | GeneralSecurityException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        };
+
+        for (int serverId : getLocationServerServiceStubs().keySet()) {
+            LocationServer.RequestMyProofsRequest request = buildRequestMyProofsRequest(userId, eps, this.getSeqNumbers().get(serverId), serverId);
+            requestMyProofs(getLocationServerServiceStubs().get(serverId), request, requestObserver);
+        }
+
+        finishLatch.await(10, TimeUnit.SECONDS);
+
+        if (finishLatch.getCount() == 0) {
+
+            if (locationProofs.isEmpty()) {
+                System.out.println("user" + getClientId() + ": User " + userId + " has not proved any location yet.");
+                return new ArrayList<>();
+            }
+
+            for (LocationProof proof : locationProofs.values()) {
+                System.out.println("user" + getClientId() + ": User " + proof.getWitnessId() + " proved user" + proof.getUserId() + " location at " + proof.getEp() + " " + proof.getLatitude() + ", " + proof.getLongitude());
+            }
+
+            return new ArrayList<>(locationProofs.values());
+        } else {
+            return requestMyProofsRegular(userId, eps);
+        }
+    }
+
+    private void requestMyProofs(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.RequestMyProofsRequest request, Consumer<LocationServer.RequestMyProofsResponse> callback) throws GeneralSecurityException {
+        try {
+            locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).requestMyProofs(request, new StreamObserver<>() {
+                @Override
+                public void onNext(LocationServer.RequestMyProofsResponse response) {
+                    callback.accept(response);
+                }
+
+                @Override
+                public void onError(Throwable t) {
+                }
+
+                @Override
+                public void onCompleted() {
+                }
+            });
+        } catch (StatusRuntimeException e) {
+            if (e.getStatus().getCode().equals(DEADLINE_EXCEEDED.getCode())) {
+                System.out.println("user" + getClientId() + ": TIMEOUT CLIENT");
+            } else {
+                throw e;
+            }
+        }
+    }
+
+
+        @Override
     void parseCommand(String cmd) throws JsonProcessingException {
         String[] args = cmd.split(" ");
 
@@ -298,6 +424,17 @@ public class Client extends AbstractClient {
                 case OBTAIN_LOCATION_REPORT: {
                     int ep = Integer.parseInt(args[1]);
                     obtainLocationReportAtomic(this.getClientId(), ep);
+                    break;
+                }
+                case REQUEST_MY_PROOFS: {
+                    int i;
+                    ArrayList<Integer> eps = new ArrayList<>();
+
+                    for (i = 1; i < args.length; i++) {
+                        eps.add(Integer.parseInt(args[i]));
+                    }
+
+                    requestMyProofsRegular(getClientId(), eps);
                     break;
                 }
                 default:
