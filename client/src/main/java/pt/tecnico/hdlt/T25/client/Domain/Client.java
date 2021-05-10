@@ -206,6 +206,7 @@ public class Client extends AbstractClient {
             locationReport = locationReports.get(ep);
         }
 
+        SubmitLocationReportRequestHeader header = new SubmitLocationReportRequestHeader(this.getClientId(), serverId, "", 0);
         List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
@@ -220,7 +221,10 @@ public class Client extends AbstractClient {
         }
 
         String content = locationReport.getLocationProver().toJsonString();
-        String outerSignatureContent = content + secretKeySpec.toString() + serverId;
+        String requestContent = content + locationReport.getLocationProofsContent().values().stream().reduce("", String::concat) + secretKeySpec.toString() + header.getServerId() + header.getClientId();
+        generateProofOfWork(header, requestContent);
+        String requestSignatureContent = requestContent + header.getProofOfWork() + header.getCounter();
+
         return LocationServer.SubmitLocationReportRequest.newBuilder()
                 .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey(serverId)))
                 .setLocationProver(
@@ -229,8 +233,8 @@ public class Client extends AbstractClient {
                                 .setSignature(locationReport.getLocationProverSignature())
                                 .build())
                 .addAllLocationProofs(locationProofMessages)
-                .setServerId(Crypto.encryptAES(secretKeySpec, String.valueOf(serverId)))
-                .setOuterSignature(Crypto.sign(outerSignatureContent, this.getPrivateKey()))
+                .setHeader(Crypto.encryptAES(secretKeySpec, header.toJsonString()))
+                .setRequestSignature(Crypto.sign(requestSignatureContent, this.getPrivateKey()))
                 .build();
     }
 
@@ -250,9 +254,11 @@ public class Client extends AbstractClient {
                         SubmitLocationReportResponse submitResponse = objectMapper.readValue(responseString, SubmitLocationReportResponse.class);
                         String signatureString = responseString + secretKeySpec.toString();
 
-                        if (Crypto.verify(signatureString, response.getSignature(), getServerPublicKey(submitResponse.getServerId()))) {
+                        if (Crypto.verify(signatureString, response.getSignature(), getServerPublicKey(submitResponse.getServerId())) && submitResponse.isOk()) {
                             System.out.println("user" + getClientId() + ": Received submit location report response -> " + submitResponse.isOk());
                             finishLatch.countDown();
+                        } else if (Crypto.verify(signatureString, response.getSignature(), getServerPublicKey(submitResponse.getServerId())) && !submitResponse.isOk()) {
+                            System.out.println("user" + getClientId() + ": Received submit location report not ok response -> " + submitResponse.isOk());
                         }
                     } catch (JsonProcessingException|GeneralSecurityException ex) {
                         System.err.println("user" + getClientId() + ": caught processing exception while submitting report");
@@ -263,9 +269,14 @@ public class Client extends AbstractClient {
 
         Consumer<Throwable> requestOnErrorObserver = new Consumer<>() {
             @Override
-            public void accept(Throwable throwable)  {
+            public void accept(Throwable throwable) {
                 synchronized (finishLatch) {
-                    finishLatch.countDown();
+                    if (finishLatch.getCount() == 0) return;
+
+                    if (throwable.getMessage().contains("ALREADY_EXISTS")) {
+                        System.out.println("user" + getClientId() + ": Duplicate report!");
+                        finishLatch.countDown();
+                    }
                 }
             }
         };
@@ -276,6 +287,13 @@ public class Client extends AbstractClient {
         }
 
         finishLatch.await(10, TimeUnit.SECONDS);
+
+        if (finishLatch.getCount() == 0) {
+            System.out.println("user" + getClientId() + ": Finished submission!");
+        } else {
+            System.out.println("user" + getClientId() + ": Retrying submit report!");
+            submitLocationReportAtomic(ep);
+        }
     }
 
     private LocationServer.RequestMyProofsRequest buildRequestMyProofsRequest(int userId, ArrayList<Integer> eps, int currentSeqNumber, int serverId) throws GeneralSecurityException {
