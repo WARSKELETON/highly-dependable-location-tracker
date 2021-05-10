@@ -501,6 +501,7 @@ public class Server {
         boolean locationReportExists = locationReports.get(new Pair<>(locationProver.getUserId(), locationProver.getEp())) != null;
 
         if (locationReportExists) {
+            System.out.println("Server" + this.id + ": Same report already exists, cleaning brb and returning! User" + locationProver.getUserId() + " ep " + locationProver.getEp() + " coords " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
             cleanBrb(locationProver.getUserId());
             throw new DuplicateReportException(locationProver.getUserId(), locationProver.getEp());
         }
@@ -522,8 +523,12 @@ public class Server {
 
         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(report.getKey(), this.privateKey);
         String locationProverContent = Crypto.decryptAES(secretKeySpec, report.getLocationProver().getContent());
+        String headerContent = Crypto.decryptAES(secretKeySpec, report.getHeader());
 
         Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
+        SubmitLocationReportRequestHeader header = objectMapper.readValue(headerContent, SubmitLocationReportRequestHeader.class);
+        // TODO mais verificações
+        int senderClientId = header.getClientId();
 
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
@@ -549,8 +554,10 @@ public class Server {
             }
         }
 
-        // Verify the whole report content
-        if (!Crypto.verify(locationProverContent + locationProofsContent.values().stream().reduce("", String::concat), report.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId()))) {
+        String reportContentString = locationProverContent + locationProofsContent.values().stream().reduce("", String::concat);
+        String requestContentString = reportContentString + secretKeySpec.toString() + headerContent;
+        // Verify the whole report content and request
+        if (!Crypto.verify(reportContentString, report.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId())) || !Crypto.verify(requestContentString, report.getRequestSignature(), this.getUserPublicKey(senderClientId))) {
             System.out.println("Server: Report failed integrity or authentication checks! User" + locationProver.getUserId() + " would be at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
             throw new InvalidSignatureException();
         }

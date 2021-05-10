@@ -298,17 +298,24 @@ abstract class AbstractClient {
         }
     }
 
-    private LocationServer.SubmitLocationReportRequest buildSubmitLocationReportRequestWriteBack(LocationServer.ObtainLocationReportResponse response, int serverId) throws GeneralSecurityException {
+    private LocationServer.SubmitLocationReportRequest buildSubmitLocationReportRequestWriteBack(LocationServer.ObtainLocationReportResponse response, int serverId) throws GeneralSecurityException, JsonProcessingException {
+        ObjectMapper objectMapper = new ObjectMapper();
         List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
+        Map<Integer, String> locationProofsContent = new HashMap<>();
         SecretKeySpec receivedSecretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
         String locationProverContent = Crypto.decryptAES(receivedSecretKeySpec, response.getLocationProver().getContent());
+        SubmitLocationReportRequestHeader header = new SubmitLocationReportRequestHeader(this.getClientId(), serverId, "proofOfWork");
+        String headerString = header.toJsonString();
 
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
 
         for (LocationServer.LocationMessage locationProof : response.getLocationProofsList()) {
             String locationProofContent = Crypto.decryptAES(receivedSecretKeySpec, locationProof.getContent());
+            LocationProof proof = objectMapper.readValue(locationProofContent, LocationProof.class);
+            int witnessId = proof.getWitnessId();
 
+            locationProofsContent.put(witnessId, locationProofContent);
             locationProofMessages.add(
                     LocationServer.LocationMessage.newBuilder()
                             .setContent(Crypto.encryptAES(secretKeySpec, locationProofContent))
@@ -317,7 +324,7 @@ abstract class AbstractClient {
             );
         }
 
-        String outerSignatureContent = locationProverContent + secretKeySpec.toString() + serverId;
+        String requestSignatureContent = locationProverContent + locationProofsContent.values().stream().reduce("", String::concat) + secretKeySpec.toString() + headerString;
         return LocationServer.SubmitLocationReportRequest.newBuilder()
                 .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey(serverId)))
                 .setLocationProver(
@@ -326,8 +333,8 @@ abstract class AbstractClient {
                                 .setSignature(response.getLocationProver().getSignature())
                                 .build())
                 .addAllLocationProofs(locationProofMessages)
-                .setServerId(Crypto.encryptAES(secretKeySpec, String.valueOf(serverId)))
-                .setOuterSignature(Crypto.sign(outerSignatureContent, this.privateKey))
+                .setHeader(Crypto.encryptAES(secretKeySpec, headerString))
+                .setRequestSignature(Crypto.sign(requestSignatureContent, this.privateKey))
                 .build();
     }
 

@@ -3,7 +3,6 @@ package pt.tecnico.hdlt.T25.server.Services;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.protobuf.Empty;
 import io.grpc.Context;
-import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import pt.tecnico.hdlt.T25.ByzantineReliableBroadcast;
 import pt.tecnico.hdlt.T25.ByzantineReliableBroadcastServiceGrpc;
@@ -28,11 +27,7 @@ public class ByzantineReliableBroadcastServiceImpl extends ByzantineReliableBroa
         ctx.run(() -> {
             try {
                 locationServer.handleEcho(request);
-            } catch (GeneralSecurityException e) {
-                e.printStackTrace();
-            } catch (InvalidSignatureException e) {
-                e.printStackTrace();
-            } catch (JsonProcessingException e) {
+            } catch (GeneralSecurityException | JsonProcessingException | InvalidSignatureException e) {
                 e.printStackTrace();
             }
         });
@@ -47,11 +42,7 @@ public class ByzantineReliableBroadcastServiceImpl extends ByzantineReliableBroa
         ctx.run(() -> {
             try {
                 locationServer.handleReady(request);
-            } catch (GeneralSecurityException e) {
-                e.printStackTrace();
-            } catch (InvalidSignatureException e) {
-                e.printStackTrace();
-            } catch (IOException e) {
+            } catch (GeneralSecurityException | InvalidSignatureException | IOException e) {
                 e.printStackTrace();
             }
         });

@@ -20,8 +20,8 @@ message SubmitLocationReportRequest {
   string key = 1;
   LocationMessage locationProver = 2;
   repeated LocationMessage locationProofs = 3;
-  string serverId = 4;
-  string outerSignature = 5;
+  string header = 4;
+  string requestSignature = 5;
 }
 
 message SubmitLocationReportResponse {
