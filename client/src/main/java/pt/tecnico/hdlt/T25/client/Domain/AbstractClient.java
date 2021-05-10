@@ -298,14 +298,31 @@ abstract class AbstractClient {
         }
     }
 
+    public void generateProofOfWork(SubmitLocationReportRequestHeader header, String content) throws GeneralSecurityException {
+        byte[] hash;
+        int counter = 0;
+        while (true) {
+            hash = Crypto.getSHA256Hash(content + counter);
+
+            if (hash[0] == 0) {
+                break;
+            }
+
+            counter++;
+        }
+
+        System.out.println("user" + getClientId() + ": Finished generating proof of work got counter " + counter + " and " + Base64.getEncoder().encodeToString(hash));
+        header.setProofOfWork(Base64.getEncoder().encodeToString(hash));
+        header.setCounter(counter);
+    }
+
     private LocationServer.SubmitLocationReportRequest buildSubmitLocationReportRequestWriteBack(LocationServer.ObtainLocationReportResponse response, int serverId) throws GeneralSecurityException, JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
         Map<Integer, String> locationProofsContent = new HashMap<>();
         SecretKeySpec receivedSecretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
         String locationProverContent = Crypto.decryptAES(receivedSecretKeySpec, response.getLocationProver().getContent());
-        SubmitLocationReportRequestHeader header = new SubmitLocationReportRequestHeader(this.getClientId(), serverId, "proofOfWork");
-        String headerString = header.toJsonString();
+        SubmitLocationReportRequestHeader header = new SubmitLocationReportRequestHeader(this.getClientId(), serverId, "", 0);
 
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
@@ -324,7 +341,11 @@ abstract class AbstractClient {
             );
         }
 
-        String requestSignatureContent = locationProverContent + locationProofsContent.values().stream().reduce("", String::concat) + secretKeySpec.toString() + headerString;
+        String content = locationProverContent;
+        String requestContent = content + locationProofsContent.values().stream().reduce("", String::concat) + secretKeySpec.toString() + header.getServerId() + header.getClientId();
+        generateProofOfWork(header, requestContent);
+        String requestSignatureContent = requestContent + header.getProofOfWork() + header.getCounter();
+
         return LocationServer.SubmitLocationReportRequest.newBuilder()
                 .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey(serverId)))
                 .setLocationProver(
@@ -333,7 +354,7 @@ abstract class AbstractClient {
                                 .setSignature(response.getLocationProver().getSignature())
                                 .build())
                 .addAllLocationProofs(locationProofMessages)
-                .setHeader(Crypto.encryptAES(secretKeySpec, headerString))
+                .setHeader(Crypto.encryptAES(secretKeySpec, header.toJsonString()))
                 .setRequestSignature(Crypto.sign(requestSignatureContent, this.privateKey))
                 .build();
     }
@@ -385,7 +406,7 @@ abstract class AbstractClient {
             submitLocationReport(locationServerServiceStubs.get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver);
         }
 
-        finishLatch.await(10, TimeUnit.SECONDS);
+        finishLatch.await(5, TimeUnit.SECONDS);
 
         if (finishLatch.getCount() == 0) {
             ObjectMapper objectMapper = new ObjectMapper();
@@ -430,7 +451,7 @@ abstract class AbstractClient {
 
         final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
 
-        Consumer<LocationServer.ObtainLocationReportResponse> requestObserver = new Consumer<>() {
+        Consumer<LocationServer.ObtainLocationReportResponse> requestOnSuccessObserver = new Consumer<>() {
             @Override
             public void accept(LocationServer.ObtainLocationReportResponse response) {
                 synchronized (finishLatch) {
@@ -450,17 +471,30 @@ abstract class AbstractClient {
             }
         };
 
+        Consumer<Throwable> requestOnErrorObserver = new Consumer<>() {
+            @Override
+            public void accept(Throwable throwable) {
+                synchronized (finishLatch) {
+                    if (finishLatch.getCount() == 0) return;
+
+                    if (throwable.getMessage().contains("NOT_FOUND")) {
+                        finishLatch.countDown();
+                    }
+                    System.out.println(throwable.getMessage());
+                }
+            }
+        };
+
         for (int serverId : locationServerServiceStubs.keySet()) {
             LocationServer.ObtainLocationReportRequest request = this.buildObtainLocationReportRequest(userId, ep, this.seqNumbers.get(serverId), serverId);
-            obtainLocationReport(locationServerServiceStubs.get(serverId), request, requestObserver);
+            obtainLocationReport(locationServerServiceStubs.get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver);
         }
 
-        finishLatch.await(10, TimeUnit.SECONDS);
+        finishLatch.await(5, TimeUnit.SECONDS);
 
         if (finishLatch.getCount() == 0 && !reportResponses.isEmpty()) {
             writeBackLocationReport(reportResponses.get(0));
         } else {
-            // TODO Check NOT_FOUND infinite loop
             if (finishLatch.getCount() == 0 && reportResponses.isEmpty()) {
                 return null;
             } else {
@@ -472,16 +506,17 @@ abstract class AbstractClient {
         return null;
     }
 
-    public void obtainLocationReport(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.ObtainLocationReportRequest request, Consumer<LocationServer.ObtainLocationReportResponse> callback) {
+    public void obtainLocationReport(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.ObtainLocationReportRequest request, Consumer<LocationServer.ObtainLocationReportResponse> callbackOnSuccess, Consumer<Throwable> callbackOnError) {
         try {
             locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).obtainLocationReport(request, new StreamObserver<>() {
                 @Override
                 public void onNext(LocationServer.ObtainLocationReportResponse response) {
-                    callback.accept(response);
+                    callbackOnSuccess.accept(response);
                 }
 
                 @Override
                 public void onError(Throwable t) {
+                    callbackOnError.accept(t);
                 }
 
                 @Override

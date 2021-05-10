@@ -7,14 +7,16 @@ public class SubmitLocationReportRequestHeader {
     private int clientId;
     private int serverId;
     private String proofOfWork;
+    private int counter;
 
     public SubmitLocationReportRequestHeader() {
     }
 
-    public SubmitLocationReportRequestHeader(int clientId, int serverId, String proofOfWork) {
+    public SubmitLocationReportRequestHeader(int clientId, int serverId, String proofOfWork, int counter) {
         this.clientId = clientId;
         this.serverId = serverId;
         this.proofOfWork = proofOfWork;
+        this.counter = counter;
     }
 
     public int getClientId() {
@@ -41,6 +43,14 @@ public class SubmitLocationReportRequestHeader {
         this.proofOfWork = proofOfWork;
     }
 
+    public int getCounter() {
+        return counter;
+    }
+
+    public void setCounter(int counter) {
+        this.counter = counter;
+    }
+
     public ObjectNode toJson() {
         ObjectMapper objectMapper = new ObjectMapper();
         ObjectNode node = objectMapper.createObjectNode();
@@ -48,6 +58,7 @@ public class SubmitLocationReportRequestHeader {
         node.put("clientId", this.getClientId());
         node.put("serverId", this.getServerId());
         node.put("proofOfWork", this.getProofOfWork());
+        node.put("counter", this.getCounter());
 
         return node;
     }

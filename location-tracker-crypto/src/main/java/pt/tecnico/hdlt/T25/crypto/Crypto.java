@@ -21,6 +21,13 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class Crypto {
 
+    public static byte[] getSHA256Hash(String input) throws GeneralSecurityException {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+
+        return hash;
+    }
+
     public static RSAPrivateKey getPriv(String filename) throws GeneralSecurityException {
 
         try {
@@ -63,7 +70,6 @@ public class Crypto {
     }
 
     public static String sign(String plainText, PrivateKey privateKey) {
-
         try {
             Signature privateSignature = Signature.getInstance("SHA256withRSA");
             privateSignature.initSign(privateKey);
@@ -80,7 +86,6 @@ public class Crypto {
 
     public static boolean verify(String plainText, String signature, PublicKey publicKey) {
         try {
-
             Signature publicSignature = Signature.getInstance("SHA256withRSA");
             publicSignature.initVerify(publicKey);
             publicSignature.update(plainText.getBytes(UTF_8));
@@ -88,7 +93,6 @@ public class Crypto {
             byte[] signatureBytes = Base64.getDecoder().decode(signature);
 
             return publicSignature.verify(signatureBytes);
-
         } catch (Exception e) {
             System.out.println("Failed to verify message.");
         }

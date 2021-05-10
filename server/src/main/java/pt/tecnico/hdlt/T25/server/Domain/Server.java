@@ -31,6 +31,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import static java.util.Base64.getEncoder;
+
 public class Server {
     private String SERVER_RECOVERY_FILE_PATH;
     private String BACKUP_RECOVERY_FILE_PATH;
@@ -256,7 +258,7 @@ public class Server {
         SeqNumberMessage seqNumberResponse = new SeqNumberMessage(clientId, this.id, currentSeqNumber);
 
         return LocationServer.ObtainLatestSeqNumberResponse.newBuilder()
-                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getUserPublicKey(clientId)))
+                .setKey(Crypto.encryptRSA(getEncoder().encodeToString(encodedKey), this.getUserPublicKey(clientId)))
                 .setContent(Crypto.encryptAES(newSecretKeySpec, seqNumberResponse.toJsonString()))
                 .setSignature(Crypto.sign(seqNumberResponse.toJsonString(), this.privateKey))
                 .build();
@@ -333,7 +335,7 @@ public class Server {
 
         String serverSignature = locationProverContent + locationProofsContent.values().stream().reduce("", String::concat) + secretKeySpec.toString() + this.id + serverIdReceiver;
         return ByzantineReliableBroadcast.RequestMsg.newBuilder()
-                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey(serverIdReceiver)))
+                .setKey(Crypto.encryptRSA(getEncoder().encodeToString(encodedKey), this.getServerPublicKey(serverIdReceiver)))
                 .setLocationProver(
                         ByzantineReliableBroadcast.LocationMsg.newBuilder()
                                 .setContent(Crypto.encryptAES(secretKeySpec, locationProverContent))
@@ -446,7 +448,7 @@ public class Server {
 
         String serverSignature = report.getLocationProver().toJsonString() + report.getLocationProofsContent().values().stream().reduce("", String::concat) + secretKeySpec.toString() + this.id + serverIdReceiver;
         return ByzantineReliableBroadcast.RequestMsg.newBuilder()
-                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey(serverIdReceiver)))
+                .setKey(Crypto.encryptRSA(getEncoder().encodeToString(encodedKey), this.getServerPublicKey(serverIdReceiver)))
                 .setLocationProver(
                         ByzantineReliableBroadcast.LocationMsg.newBuilder()
                                 .setContent(Crypto.encryptAES(secretKeySpec, report.getLocationProver().toJsonString()))
@@ -517,7 +519,13 @@ public class Server {
         return existentReport.getLocationProverSignature().equals(locationReport.getLocationProverSignature());
     }
 
-    public LocationServer.SubmitLocationReportResponse submitLocationReport(LocationServer.SubmitLocationReportRequest report) throws IOException, GeneralSecurityException, DuplicateReportException, InvalidSignatureException, InvalidNumberOfProofsException, InterruptedException {
+    private boolean verifyProofOfWork(String content, String clientHash, int counter) throws GeneralSecurityException {
+        String hash = Base64.getEncoder().encodeToString(Crypto.getSHA256Hash(content + counter));
+
+        return hash.equals(clientHash);
+    }
+
+    public LocationServer.SubmitLocationReportResponse submitLocationReport(LocationServer.SubmitLocationReportRequest report) throws IOException, GeneralSecurityException, DuplicateReportException, InvalidSignatureException, InvalidNumberOfProofsException, InterruptedException, InvalidProofOfWorkException {
         ObjectMapper objectMapper = new ObjectMapper();
         List<Integer> witnessIds = new ArrayList<>();
 
@@ -555,7 +563,14 @@ public class Server {
         }
 
         String reportContentString = locationProverContent + locationProofsContent.values().stream().reduce("", String::concat);
-        String requestContentString = reportContentString + secretKeySpec.toString() + headerContent;
+        String proofOfWorkContent = reportContentString + secretKeySpec.toString() + header.getServerId() + header.getClientId();
+        String requestContentString = proofOfWorkContent + header.getProofOfWork() + header.getCounter();
+
+        if (!verifyProofOfWork(proofOfWorkContent, header.getProofOfWork(), header.getCounter())) {
+            System.out.println("Server: Report failed proof of work checks! User" + locationProver.getUserId() + " would be at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+            throw new InvalidProofOfWorkException();
+        }
+
         // Verify the whole report content and request
         if (!Crypto.verify(reportContentString, report.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId())) || !Crypto.verify(requestContentString, report.getRequestSignature(), this.getUserPublicKey(senderClientId))) {
             System.out.println("Server: Report failed integrity or authentication checks! User" + locationProver.getUserId() + " would be at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
@@ -601,11 +616,17 @@ public class Server {
         int receivedSeqNumber = locationRequest.getSeqNumber();
         int expectedSeqNumber = seqNumbers.get(sourceClientId);
 
-        if (receivedSeqNumber != expectedSeqNumber) throw new StaleException(sourceClientId, receivedSeqNumber, expectedSeqNumber);
+        if (receivedSeqNumber != expectedSeqNumber) {
+            System.out.println("Server" + this.id + ": Sequence numbers do not match! " + locationRequest.getUserId() + " location at epoch " + locationRequest.getEp());
+            throw new StaleException(sourceClientId, receivedSeqNumber, expectedSeqNumber);
+        }
         seqNumbers.put(sourceClientId, expectedSeqNumber + 1);
 
         LocationReport locationReport = locationReports.get(new Pair<>(locationRequest.getUserId(), locationRequest.getEp()));
-        if (locationReport == null) throw new ReportNotFoundException(locationRequest.getUserId(), locationRequest.getEp());
+        if (locationReport == null) {
+            System.out.println("Server" + this.id + ": Report not found! " + locationRequest.getUserId() + " location at epoch " + locationRequest.getEp());
+            throw new ReportNotFoundException(locationRequest.getUserId(), locationRequest.getEp());
+        }
         String locationReportContent = locationReport.getLocationProver().toJsonString() + locationReport.getLocationProofsContent().values().stream().reduce("", String::concat);
 
         if ((!Crypto.verify(locationReportContent, locationReport.getLocationProverSignature(), this.getUserPublicKey(sourceClientId)) && sourceClientId != -1) || !Crypto.verify(requestContent, request.getSignature(), this.getUserPublicKey(sourceClientId))) {
@@ -637,7 +658,7 @@ public class Server {
 
         String serverSignature = report.getLocationProver().toJsonString() + report.getLocationProofsContent().values().stream().reduce("", String::concat) + seqNumber + this.id;
         return LocationServer.ObtainLocationReportResponse.newBuilder()
-                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getUserPublicKey(userId)))
+                .setKey(Crypto.encryptRSA(getEncoder().encodeToString(encodedKey), this.getUserPublicKey(userId)))
                 .setLocationProver(
                         LocationServer.LocationMessage.newBuilder()
                                 .setContent(Crypto.encryptAES(secretKeySpec, report.getLocationProver().toJsonString()))
@@ -694,7 +715,7 @@ public class Server {
         String responseSignatureString = response.toJsonString() + secretKeySpec.toString();
 
         return LocationServer.SubmitLocationReportResponse.newBuilder()
-                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getUserPublicKey(userId)))
+                .setKey(Crypto.encryptRSA(getEncoder().encodeToString(encodedKey), this.getUserPublicKey(userId)))
                 .setContent(Crypto.encryptAES(secretKeySpec, responseString))
                 .setSignature(Crypto.sign(responseSignatureString, this.privateKey))
                 .build();

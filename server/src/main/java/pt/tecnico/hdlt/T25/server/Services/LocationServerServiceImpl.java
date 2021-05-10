@@ -57,7 +57,7 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 			responseObserver.onError(Status.ALREADY_EXISTS.withDescription(ex.getMessage()).asRuntimeException());
 		} catch (InvalidNumberOfProofsException ex2) {
 			responseObserver.onError(Status.INVALID_ARGUMENT.withDescription(ex2.getMessage()).asRuntimeException());
-		} catch (InvalidSignatureException ex3) {
+		} catch (InvalidSignatureException | InvalidProofOfWorkException ex3) {
 			responseObserver.onError(Status.UNAUTHENTICATED.withDescription(ex3.getMessage()).asRuntimeException());
 		} catch (GeneralSecurityException | IOException | InterruptedException ex4) {
 			responseObserver.onError(Status.ABORTED.withDescription(ex4.getMessage()).asRuntimeException());
@@ -78,8 +78,8 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 			responseObserver.onCompleted();
 		} catch (ReportNotFoundException ex) {
 			responseObserver.onError(Status.NOT_FOUND.withDescription(ex.getMessage()).asRuntimeException());
-		} catch (StaleException ex) {
-			responseObserver.onError(Status.FAILED_PRECONDITION.withDescription(ex.getMessage()).asRuntimeException());
+		} catch (StaleException ex4) {
+			responseObserver.onError(Status.FAILED_PRECONDITION.withDescription(ex4.getMessage()).asRuntimeException());
 		} catch (InvalidSignatureException ex2) {
 			responseObserver.onError(Status.PERMISSION_DENIED.withDescription(ex2.getMessage()).asRuntimeException());
 		} catch (IOException | GeneralSecurityException ex3) {
@@ -99,8 +99,8 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 
 			responseObserver.onNext(response);
 			responseObserver.onCompleted();
-		} catch (StaleException ex) {
-			responseObserver.onError(Status.FAILED_PRECONDITION.withDescription(ex.getMessage()).asRuntimeException());
+		} catch (StaleException ex3) {
+			responseObserver.onError(Status.FAILED_PRECONDITION.withDescription(ex3.getMessage()).asRuntimeException());
 		} catch (InvalidSignatureException ex) {
 			responseObserver.onError(Status.PERMISSION_DENIED.withDescription(ex.getMessage()).asRuntimeException());
 		} catch (GeneralSecurityException | IOException ex2) {
