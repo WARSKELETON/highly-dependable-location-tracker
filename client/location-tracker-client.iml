@@ -37,7 +37,7 @@
     <orderEntry type="library" scope="RUNTIME" name="Maven: io.perfmark:perfmark-api:0.23.0" level="project" />
     <orderEntry type="module" module-name="location-tracker-crypto" />
     <orderEntry type="module" module-name="location-tracker-server" scope="TEST" />
-    <orderEntry type="library" scope="TEST" name="Maven: org.javatuples:javatuples:1.2" level="project" />
+    <orderEntry type="library" name="Maven: org.javatuples:javatuples:1.2" level="project" />
     <orderEntry type="library" name="Maven: com.fasterxml.jackson.core:jackson-databind:2.10.0.pr2" level="project" />
     <orderEntry type="library" name="Maven: com.fasterxml.jackson.core:jackson-annotations:2.10.0.pr2" level="project" />
     <orderEntry type="library" name="Maven: com.fasterxml.jackson.core:jackson-core:2.10.0.pr2" level="project" />

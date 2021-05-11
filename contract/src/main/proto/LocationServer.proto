@@ -61,6 +61,20 @@ message ObtainUsersAtLocationResponse {
   string serverId = 5;
 }
 
+message RequestMyProofsRequest {
+  string key = 1;
+  string content = 2;
+  string signature = 3;
+}
+
+message RequestMyProofsResponse {
+  string key = 1;
+  repeated LocationMessage locationProofs = 2;
+  string serverSignature = 3;
+  string seqNumber = 4;
+  string serverId = 5;
+}
+
 message LocationMessage {
   string content = 1;
   string signature = 2;
@@ -71,4 +85,5 @@ service LocationServerService {
   rpc submitLocationReport(SubmitLocationReportRequest) returns (SubmitLocationReportResponse);
   rpc obtainLocationReport(ObtainLocationReportRequest) returns (ObtainLocationReportResponse);
   rpc obtainUsersAtLocation(ObtainUsersAtLocationRequest) returns (ObtainUsersAtLocationResponse);
+  rpc requestMyProofs(RequestMyProofsRequest) returns (RequestMyProofsResponse);
 }

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.protobuf.AbstractMessage;
 import com.google.protobuf.Empty;
 import io.grpc.BindableService;
 import io.grpc.ManagedChannel;
@@ -24,6 +25,7 @@ import javax.crypto.spec.SecretKeySpec;
 import java.io.File;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
+import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.*;
@@ -620,7 +622,6 @@ public class Server {
             System.out.println("Server" + this.id + ": Sequence numbers do not match! " + locationRequest.getUserId() + " location at epoch " + locationRequest.getEp());
             throw new StaleException(sourceClientId, receivedSeqNumber, expectedSeqNumber);
         }
-        seqNumbers.put(sourceClientId, expectedSeqNumber + 1);
 
         LocationReport locationReport = locationReports.get(new Pair<>(locationRequest.getUserId(), locationRequest.getEp()));
         if (locationReport == null) {
@@ -635,6 +636,7 @@ public class Server {
         }
 
         System.out.println("Server: Obtaining location for " + locationRequest.getUserId() + " at epoch " + locationRequest.getEp());
+        seqNumbers.put(sourceClientId, expectedSeqNumber + 1);
         this.saveCurrentServerState();
 
         byte[] encodedKey = Crypto.generateSecretKey();
@@ -714,6 +716,65 @@ public class Server {
                 .setServerSignature(Crypto.sign(serverSignature, this.privateKey))
                 .setSeqNumber(Crypto.encryptAES(newSecretKeySpec, Integer.toString(seqNumbers.get(-1))))
                 .setServerId(Crypto.encryptAES(newSecretKeySpec, Integer.toString(this.id)))
+                .build();
+    }
+
+    public LocationServer.RequestMyProofsResponse requestMyProofs(LocationServer.RequestMyProofsRequest request) throws IOException, GeneralSecurityException, InvalidSignatureException, StaleException {
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(request.getKey(), this.privateKey);
+        String requestContent = Crypto.decryptAES(secretKeySpec, request.getContent());
+        ProofsRequest proofsRequest = objectMapper.readValue(requestContent, ProofsRequest.class);
+        int receivedSeqNumber = proofsRequest.getSeqNumber();
+
+        int clientId = proofsRequest.getUserId();
+
+        int expectedSeqNumber = seqNumbers.get(clientId);
+
+        if (receivedSeqNumber != expectedSeqNumber) throw new StaleException(clientId, receivedSeqNumber, expectedSeqNumber);
+
+        if (!Crypto.verify(requestContent + secretKeySpec.toString(), request.getSignature(), this.getUserPublicKey(clientId))) {
+            System.out.println("Server: user" + clientId + " tried to illegitimately request users' proofs at cetain epochs");
+            throw new InvalidSignatureException();
+        }
+
+        seqNumbers.put(clientId, expectedSeqNumber + 1);
+
+        return buildRequestMyProofsResponse(proofsRequest, clientId, seqNumbers.get(clientId));
+    }
+
+    private LocationServer.RequestMyProofsResponse buildRequestMyProofsResponse(ProofsRequest proofsRequest, int userId, int seqNumber) throws GeneralSecurityException {
+        List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
+        byte[] encodedKey = Crypto.generateSecretKey();
+        SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
+
+        // Add only its own proofs to the list
+        for (LocationReport locationReport : locationReports.values()) {
+            if (!proofsRequest.getEps().contains(locationReport.getLocationProver().getEp())) continue;
+
+            for (Integer witnessId : locationReport.getLocationProofsContent().keySet()) {
+                if (witnessId != proofsRequest.getUserId()) continue;
+
+                System.out.println("Server: user" + userId + " prooved user" + locationReport.getLocationProver().getUserId() + " location ( " + locationReport.getLocationProver().getLatitude() + ", " + locationReport.getLocationProver().getLongitude() + " ) at " + locationReport.getLocationProver().getEp());
+
+                String locationProofContent = locationReport.getLocationProofsContent().get(witnessId);
+
+                locationProofMessages.add(
+                        LocationServer.LocationMessage.newBuilder()
+                                .setContent(Crypto.encryptAES(secretKeySpec, locationProofContent))
+                                .setSignature(locationReport.getLocationProofsSignature().get(witnessId))
+                                .build()
+                );
+            }
+        }
+
+        String serverSignature = locationProofMessages.stream().map(AbstractMessage::toString).reduce("", String::concat) + seqNumber + this.id;
+        return LocationServer.RequestMyProofsResponse.newBuilder()
+                .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getUserPublicKey(userId)))
+                .addAllLocationProofs(locationProofMessages)
+                .setServerSignature(Crypto.sign(serverSignature, this.privateKey))
+                .setSeqNumber(Crypto.encryptAES(secretKeySpec, Integer.toString(seqNumber)))
+                .setServerId(Crypto.encryptAES(secretKeySpec, Integer.toString(this.id)))
                 .build();
     }
 

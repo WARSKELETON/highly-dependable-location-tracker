@@ -128,7 +128,7 @@ abstract class AbstractClient {
         return seqNumbers;
     }
 
-    public Map<Integer, LocationServerServiceGrpc.LocationServerServiceStub> getLocationServerServiceStub() {
+    public Map<Integer, LocationServerServiceGrpc.LocationServerServiceStub> getLocationServerServiceStubs() {
         return locationServerServiceStubs;
     }
 
