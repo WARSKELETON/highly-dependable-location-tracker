@@ -11,9 +11,11 @@ import pt.tecnico.hdlt.T25.crypto.Crypto;
 import javax.crypto.spec.SecretKeySpec;
 import java.security.GeneralSecurityException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import static io.grpc.Status.DEADLINE_EXCEEDED;
 import static pt.tecnico.hdlt.T25.crypto.Crypto.getPriv;
@@ -32,21 +34,40 @@ public class HAClient extends AbstractClient {
     public LocationServer.ObtainUsersAtLocationRequest buildObtainUsersAtLocationRequest(int latitude, int longitude, int ep, int currentSeqNumber, int serverId) throws GeneralSecurityException {
         Location usersLocationRequest = new Location(-1, ep, latitude, longitude);
         String requestContent = usersLocationRequest.toJsonString();
-        String signatureString = requestContent + currentSeqNumber;
 
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
+        String signatureString = requestContent + secretKeySpec.toString() + currentSeqNumber + serverId;
 
         return LocationServer.ObtainUsersAtLocationRequest.newBuilder()
                 .setKey(Crypto.encryptRSA(Base64.getEncoder().encodeToString(encodedKey), this.getServerPublicKey(serverId)))
                 .setContent(Crypto.encryptAES(secretKeySpec, requestContent))
                 .setSignature(Crypto.sign(signatureString, this.getPrivateKey()))
                 .setSeqNumber(Crypto.encryptAES(secretKeySpec, String.valueOf(currentSeqNumber)))
+                .setServerId(Crypto.encryptAES(secretKeySpec, String.valueOf(serverId)))
                 .build();
     }
 
+    private boolean verifyObtainUsersAtLocationResponse(LocationServer.ObtainUsersAtLocationResponse response) throws GeneralSecurityException {
+        SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
+        String serverId = Crypto.decryptAES(secretKeySpec, response.getServerId());
+        String seqNumber = Crypto.decryptAES(secretKeySpec, response.getSeqNumber());
+        List<String> reportSignatures = new ArrayList<>();
+
+        for (LocationServer.ObtainLocationReportResponse report : response.getLocationReportsList()) {
+            reportSignatures.add(report.getServerSignature());
+        }
+
+        String serverSignature = reportSignatures.stream().reduce("", String::concat) + secretKeySpec.toString() + seqNumber + serverId;
+        return Crypto.verify(serverSignature, response.getServerSignature(), this.getServerPublicKey(Integer.parseInt(serverId)));
+    }
+
+    private boolean verifyUsersReportResponse(LocationServer.ObtainLocationReportResponse response, Location location, int latitude, int longitude, int ep) throws GeneralSecurityException, JsonProcessingException {
+        return verifyLocationReport(location.getUserId(), ep, response) && location.getEp() == ep && location.getLatitude() == latitude && location.getLongitude() == longitude;
+    }
+
     public List<Location> obtainUsersAtLocationRegular(int latitude, int longitude, int ep) throws GeneralSecurityException, InterruptedException {
-        List<Location> locations = new ArrayList<>();
+        Map<Integer, Location> locations = new ConcurrentHashMap<>();
 
         final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
 
@@ -57,18 +78,26 @@ public class HAClient extends AbstractClient {
                     if (finishLatch.getCount() == 0) return;
 
                     try {
-                        ObjectMapper objectMapper = new ObjectMapper();
-                        for (LocationServer.ObtainLocationReportResponse report : response.getLocationReportsList()) {
-                            // TODO Fix verify for users
-                            if (verifyLocationReport(0, 0, report)) {
-                                SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(report.getKey(), getPrivateKey());
+                        if (verifyObtainUsersAtLocationResponse(response)) {
+                            ObjectMapper objectMapper = new ObjectMapper();
+                            SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
+
+                            for (LocationServer.ObtainLocationReportResponse report : response.getLocationReportsList()) {
                                 String locationProverContent = Crypto.decryptAES(secretKeySpec, report.getLocationProver().getContent());
-                                locations.add(objectMapper.readValue(locationProverContent, Location.class));
-                                finishLatch.countDown();
+                                Location location = objectMapper.readValue(locationProverContent, Location.class);
+
+                                if (verifyUsersReportResponse(report, location, latitude, longitude, ep)) {
+                                    locations.put(location.getUserId(), location);
+                                }
                             }
+                            int serverId = Integer.parseInt(Crypto.decryptAES(secretKeySpec, response.getServerId()));
+                            getSeqNumbers().put(serverId, getSeqNumbers().get(serverId) + 1);
+                            finishLatch.countDown();
                         }
-                    } catch (JsonProcessingException|GeneralSecurityException ex) {
+                    } catch (JsonProcessingException ex) {
                         System.err.println("user" + getClientId() + ": caught processing exception while obtaining users at location");
+                    } catch (GeneralSecurityException ex2) {
+                        System.err.println("user" + getClientId() + ": caught security exception while obtaining users at location");
                     }
                 }
             }
@@ -79,9 +108,18 @@ public class HAClient extends AbstractClient {
             obtainUsersAtLocation(getLocationServerServiceStub().get(serverId), request, requestObserver);
         }
 
-        finishLatch.await(10, TimeUnit.SECONDS);
+        finishLatch.await(5, TimeUnit.SECONDS);
 
-        return locations;
+        if (finishLatch.getCount() == 0) {
+            System.out.println("user" + getClientId() + ": Got these users");
+            for (Location location : locations.values()) {
+                System.out.println("user" + getClientId() + ": Report from user" + location.getUserId() + " ep " + location.getEp() + " coords at " + location.getLatitude() + ", " + location.getLongitude());
+            }
+        } else {
+            obtainUsersAtLocationRegular(latitude, longitude, ep);
+        }
+
+        return new ArrayList<>(locations.values());
     }
 
     public void obtainUsersAtLocation(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.ObtainUsersAtLocationRequest request, Consumer<LocationServer.ObtainUsersAtLocationResponse> callback) {

@@ -204,7 +204,6 @@ abstract class AbstractClient {
             return false;
         }
 
-        this.seqNumbers.put(serverId, currentSeqNumber + 1);
         return true;
     }
 
@@ -459,6 +458,9 @@ abstract class AbstractClient {
 
                     try {
                         if (response != null && verifyLocationReport(userId, ep, response)) {
+                            SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
+                            int serverId = Integer.parseInt(Crypto.decryptAES(secretKeySpec, response.getServerId()));
+                            seqNumbers.put(serverId, seqNumbers.get(serverId) + 1);
                             reportResponses.add(response);
                             while (finishLatch.getCount() > 0) {
                                 finishLatch.countDown();

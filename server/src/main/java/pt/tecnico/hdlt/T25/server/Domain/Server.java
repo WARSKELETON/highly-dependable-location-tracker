@@ -120,7 +120,7 @@ public class Server {
 
     private void initializeSeqNumbers() {
         this.seqNumbers = new HashMap<>();
-        for (int i = 0; i < numberOfUsers; i++) {
+        for (int i = -1; i < numberOfUsers; i++) {
             seqNumbers.put(i, 0);
         }
     }
@@ -637,13 +637,13 @@ public class Server {
         System.out.println("Server: Obtaining location for " + locationRequest.getUserId() + " at epoch " + locationRequest.getEp());
         this.saveCurrentServerState();
 
-        return this.buildLocationReportResponse(locationReport, sourceClientId, seqNumbers.get(sourceClientId));
+        byte[] encodedKey = Crypto.generateSecretKey();
+        SecretKeySpec newSecretKeySpec = new SecretKeySpec(encodedKey, "AES");
+        return this.buildLocationReportResponse(locationReport, sourceClientId, seqNumbers.get(sourceClientId), newSecretKeySpec, encodedKey);
     }
 
-    private LocationServer.ObtainLocationReportResponse buildLocationReportResponse(LocationReport report, int userId, int seqNumber) throws GeneralSecurityException {
+    private LocationServer.ObtainLocationReportResponse buildLocationReportResponse(LocationReport report, int userId, int seqNumber, SecretKeySpec secretKeySpec, byte[] encodedKey) throws GeneralSecurityException {
         List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
-        byte[] encodedKey = Crypto.generateSecretKey();
-        SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
 
         for (Integer witnessId : report.getLocationProofsContent().keySet()) {
             String locationProofContent = report.getLocationProofsContent().get(witnessId);
@@ -678,32 +678,42 @@ public class Server {
         String requestContent = Crypto.decryptAES(secretKeySpec, request.getContent());
         int receivedSeqNumber = Integer.parseInt(Crypto.decryptAES(secretKeySpec, request.getSeqNumber()));
         Location locationRequest = objectMapper.readValue(requestContent, Location.class);
+        String expectedSignature = requestContent + secretKeySpec.toString() + receivedSeqNumber + this.id;
 
-        int clientId = locationRequest.getUserId();
-
-        int expectedSeqNumber = seqNumbers.get(clientId);
-
-        if (receivedSeqNumber != expectedSeqNumber) throw new StaleException(clientId, receivedSeqNumber, expectedSeqNumber);
-        seqNumbers.put(clientId, expectedSeqNumber + 1);
-
-        if (!Crypto.verify(requestContent + receivedSeqNumber, request.getSignature(), this.getUserPublicKey(-1))) {
-            System.out.println("Server: user" + clientId + " tried to illegitimately request users' location at epoch " + locationRequest.getEp() + " " + locationRequest.getLatitude() + ", " + locationRequest.getLongitude());
+        if (!Crypto.verify(expectedSignature, request.getSignature(), this.getUserPublicKey(-1))) {
+            System.out.println("Server: some user tried to illegitimately request users' location at epoch " + locationRequest.getEp() + " " + locationRequest.getLatitude() + ", " + locationRequest.getLongitude());
             throw new InvalidSignatureException();
         }
 
+        int expectedSeqNumber = seqNumbers.get(-1);
+        if (receivedSeqNumber != expectedSeqNumber) throw new StaleException(-1, receivedSeqNumber, expectedSeqNumber);
+        seqNumbers.put(-1, expectedSeqNumber + 1);
+
+        byte[] encodedKey = Crypto.generateSecretKey();
+        SecretKeySpec newSecretKeySpec = new SecretKeySpec(encodedKey, "AES");
+
         List<LocationServer.ObtainLocationReportResponse> locationReportResponses = new ArrayList<>();
+        List<String> reportSignatures = new ArrayList<>();
         for (int i = 0; i < this.numberOfUsers; i++) {
             LocationReport report = locationReports.get(new Pair<>(i, locationRequest.getEp()));
+
             if (report != null && report.getLocationProver().getLongitude() == locationRequest.getLongitude() && report.getLocationProver().getLatitude() == locationRequest.getLatitude()) {
-                locationReportResponses.add(this.buildLocationReportResponse(report, -1, seqNumbers.get(-1)));
+                LocationServer.ObtainLocationReportResponse reportResponse = this.buildLocationReportResponse(report, -1, seqNumbers.get(-1), newSecretKeySpec, encodedKey);
+                locationReportResponses.add(reportResponse);
+                reportSignatures.add(reportResponse.getServerSignature());
             }
         }
-        System.out.println("Server: Obtaining location for " + clientId + " at epoch " + locationRequest.getEp());
 
+        String serverSignature = reportSignatures.stream().reduce("", String::concat) + newSecretKeySpec.toString() + seqNumbers.get(-1) + this.id;
         this.saveCurrentServerState();
 
+        System.out.println("Server: Sending HAClient reports of users at epoch " + locationRequest.getEp() + " coords " + locationRequest.getLatitude() + ", " + locationRequest.getLongitude());
         return LocationServer.ObtainUsersAtLocationResponse.newBuilder()
+                .setKey(Crypto.encryptRSA(getEncoder().encodeToString(encodedKey), this.getUserPublicKey(-1)))
                 .addAllLocationReports(locationReportResponses)
+                .setServerSignature(Crypto.sign(serverSignature, this.privateKey))
+                .setSeqNumber(Crypto.encryptAES(newSecretKeySpec, Integer.toString(seqNumbers.get(-1))))
+                .setServerId(Crypto.encryptAES(newSecretKeySpec, Integer.toString(this.id)))
                 .build();
     }
 

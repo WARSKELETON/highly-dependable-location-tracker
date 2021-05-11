@@ -50,10 +50,15 @@ message ObtainUsersAtLocationRequest {
   string content = 2;
   string signature = 3;
   string seqNumber = 4;
+  string serverId = 5;
 }
 
 message ObtainUsersAtLocationResponse {
-  repeated ObtainLocationReportResponse locationReports = 1;
+  string key = 1;
+  repeated ObtainLocationReportResponse locationReports = 2;
+  string serverSignature = 3;
+  string seqNumber = 4;
+  string serverId = 5;
 }
 
 message LocationMessage {
