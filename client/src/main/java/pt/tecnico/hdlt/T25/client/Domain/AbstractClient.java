@@ -553,12 +553,12 @@ abstract class AbstractClient {
         this.serverPublicKeys = new HashMap<>();
 
         for (int i = 0; i < systemInfo.getNumberOfUsers(); i++) {
-            String fileName = "client" + i + "-pub.key";
+            String fileName = "client" + i;
             this.publicKeys.put(i, Crypto.getPub(fileName));
         }
 
         for (int i = 0; i < maxReplicas; i++) {
-            String fileName = "server" + i + "-pub.key";
+            String fileName = "server" + i;
             this.serverPublicKeys.put(i, Crypto.getPub(fileName));
         }
     }

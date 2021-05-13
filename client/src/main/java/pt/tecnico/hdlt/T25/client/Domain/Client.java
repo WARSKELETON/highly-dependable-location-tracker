@@ -30,6 +30,7 @@ public class Client extends AbstractClient {
     static final String OBTAIN_LOCATION_REPORT = "obtain";
     static final String REQUEST_MY_PROOFS = "requestProofs";
     private static final int CLIENT_ORIGINAL_PORT = 8000;
+    private final String keystorePassword = "pw";
 
     private final int maxNearbyByzantineUsers;
     private Map<Integer, ProximityServiceGrpc.ProximityServiceStub> proximityServiceStubs;
@@ -41,7 +42,7 @@ public class Client extends AbstractClient {
         this.locationReports = new HashMap<>();
         this.proximityServiceStubs = new HashMap<>();
         this.connectToClients();
-        this.setPrivateKey(getPriv("client" + clientId + "-priv.key"));
+        this.setPrivateKey(getPriv("client" + getClientId(), keystorePassword));
         checkLatestSeqNumberRegular();
         if (!isTest) this.eventLoop();
     }

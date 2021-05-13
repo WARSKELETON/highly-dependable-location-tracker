@@ -6,11 +6,14 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.*;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.PKCS8EncodedKeySpec;
@@ -28,6 +31,61 @@ public class Crypto {
         return hash;
     }
 
+    public static RSAPrivateKey getPriv(String filename, String password) throws GeneralSecurityException {
+
+        try {
+            String keystorePath = "resources/keys/" + filename + ".jks";
+            File keystoreFile = new File(keystorePath);
+            KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
+
+            if (keystoreFile.exists()) {
+                keyStore.load(new FileInputStream(keystoreFile), password.toCharArray());
+            } else {
+                keyStore.load(null, null);
+                keyStore.store(new FileOutputStream(keystoreFile), password.toCharArray());
+            }
+
+            return (RSAPrivateKey) keyStore.getKey(filename, password.toCharArray());
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public static RSAPrivateKey getPrivServer(String filename, int keyId, String password) throws GeneralSecurityException {
+
+        try {
+            String keystorePath = "resources/keys/" + filename + ".jks";
+            File keystoreFile = new File(keystorePath);
+            KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
+
+            if (keystoreFile.exists()) {
+                keyStore.load(new FileInputStream(keystoreFile), password.toCharArray());
+            } else {
+                keyStore.load(null, null);
+                keyStore.store(new FileOutputStream(keystoreFile), password.toCharArray());
+            }
+
+            return (RSAPrivateKey) keyStore.getKey(filename + keyId, password.toCharArray());
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public static RSAPublicKey getPub(String filename) throws GeneralSecurityException {
+        try {
+            CertificateFactory certificateFactory = CertificateFactory.getInstance("X509");
+            FileInputStream is = new FileInputStream("resources/keys/" + filename + ".crt");
+            X509Certificate cert = (X509Certificate) certificateFactory.generateCertificate(is);
+            return (RSAPublicKey) cert.getPublicKey();
+        } catch (IOException e) {
+            System.out.println("Failed to get public key. For key: " + filename);
+            return null;
+        }
+    }
+
+    /*
     public static RSAPrivateKey getPriv(String filename) throws GeneralSecurityException {
 
         try {
@@ -58,7 +116,7 @@ public class Crypto {
             System.out.println("Failed to get public key.");
             return null;
         }
-    }
+    }*/
 
     public static String encryptRSA(String plainText, PublicKey publicKey) throws GeneralSecurityException {
         Cipher encryptCipher = Cipher.getInstance("RSA");

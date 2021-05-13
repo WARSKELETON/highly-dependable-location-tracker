@@ -39,6 +39,7 @@ public class Server {
     private String SERVER_RECOVERY_FILE_PATH;
     private String BACKUP_RECOVERY_FILE_PATH;
     private static final int SERVER_ORIGINAL_PORT = 8080;
+    private final String keystorePassword = "pw";
 
     private int id;
     private int port;
@@ -77,7 +78,7 @@ public class Server {
         this.initializeSeqNumbers();
         this.initializeBrb();
         this.locationReports = new ConcurrentHashMap<>();
-        this.privateKey = Crypto.getPriv("server" + this.id + "-priv.key");
+        this.privateKey = Crypto.getPrivServer("server", this.id, keystorePassword);
         this.loadPublicKeys();
         this.loadPreviousState();
         this.startServer();
@@ -208,13 +209,13 @@ public class Server {
         this.serverPublicKeys = new HashMap<>();
 
         for (int i = 0; i < this.numberOfUsers; i++) {
-            String fileName = "client" + i + "-pub.key";
+            String fileName = "client" + i;
             this.clientPublicKeys.put(i, Crypto.getPub(fileName));
         }
-        this.clientPublicKeys.put(-1, Crypto.getPub("ha-pub.key"));
+        this.clientPublicKeys.put(-1, Crypto.getPub("ha"));
 
         for (int i = 0; i < this.maxReplicas; i++) {
-            String fileName = "server" + i + "-pub.key";
+            String fileName = "server" + i;
             this.serverPublicKeys.put(i, Crypto.getPub(fileName));
         }
     }
