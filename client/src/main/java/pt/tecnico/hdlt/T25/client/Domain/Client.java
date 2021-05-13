@@ -339,7 +339,6 @@ public class Client extends AbstractClient {
             locationProofs.put(new Pair<>(proof.getUserId(), proof.getEp()), proof);
         }
 
-        this.getSeqNumbers().put(serverId, currentSeqNumber + 1);
         return locationProofs;
     }
 
@@ -370,6 +369,7 @@ public class Client extends AbstractClient {
         for (int serverId : getLocationServerServiceStubs().keySet()) {
             LocationServer.RequestMyProofsRequest request = buildRequestMyProofsRequest(userId, eps, this.getSeqNumbers().get(serverId), serverId);
             requestMyProofs(getLocationServerServiceStubs().get(serverId), request, requestObserver);
+            getSeqNumbers().put(serverId, getSeqNumbers().get(serverId) + 1);
         }
 
         finishLatch.await(10, TimeUnit.SECONDS);
@@ -521,6 +521,7 @@ public class Client extends AbstractClient {
 
     public void cleanup() {
         locationReports.clear();
+        this.cleanSeqNumbers();
         getSystemInfo().setAutomaticTransitions(false, Optional.empty());
     }
 }

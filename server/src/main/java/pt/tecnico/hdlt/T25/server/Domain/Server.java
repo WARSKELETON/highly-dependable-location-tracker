@@ -82,7 +82,11 @@ public class Server {
         this.loadPreviousState();
         this.startServer();
         this.connectToServers();
-        server.awaitTermination();
+        //server.awaitTermination();
+    }
+
+    PrivateKey getPrivateKey() {
+        return privateKey;
     }
 
     private void connectToServers() {
@@ -112,7 +116,7 @@ public class Server {
         }
     }
 
-    private void cleanBrb(int userId) {
+    void cleanBrb(int userId) {
         sentEcho.put(userId, false);
         sentReady.put(userId, false);
         delivered.put(userId, new CountDownLatch(1));
@@ -121,7 +125,7 @@ public class Server {
     }
 
     private void initializeSeqNumbers() {
-        this.seqNumbers = new HashMap<>();
+        this.seqNumbers = new ConcurrentHashMap<>();
         for (int i = -1; i < numberOfUsers; i++) {
             seqNumbers.put(i, 0);
         }
@@ -154,6 +158,8 @@ public class Server {
         step = objectNode.get("step").asInt();
         maxByzantineUsers = objectNode.get("maxByzantineUsers").asInt();
         maxNearbyByzantineUsers = objectNode.get("maxNearbyByzantineUsers").asInt();
+        maxReplicas = objectNode.get("maxReplicas").asInt();
+        maxByzantineReplicas = objectNode.get("maxByzantineReplicas").asInt();
         JsonNode arrayNode = objectNode.get("locationReports");
         JsonNode seqArrayNode = objectNode.get("seqNumbers");
 
@@ -463,7 +469,7 @@ public class Server {
                 .build();
     }
 
-    private boolean broadcastReport(LocationReport report) throws GeneralSecurityException, InterruptedException {
+    boolean broadcastReport(LocationReport report) throws GeneralSecurityException, InterruptedException {
         int sourceClientId = report.getLocationProver().getUserId();
 
         if (!sentEcho.get(sourceClientId)) {
@@ -500,7 +506,7 @@ public class Server {
         return false;
     }
 
-    private void deliverReport(LocationReport locationReport) throws IOException, DuplicateReportException {
+    void deliverReport(LocationReport locationReport) throws IOException, DuplicateReportException {
         Location locationProver = locationReport.getLocationProver();
         boolean locationReportExists = locationReports.get(new Pair<>(locationProver.getUserId(), locationProver.getEp())) != null;
 
@@ -622,6 +628,7 @@ public class Server {
             System.out.println("Server" + this.id + ": Sequence numbers do not match! " + locationRequest.getUserId() + " location at epoch " + locationRequest.getEp());
             throw new StaleException(sourceClientId, receivedSeqNumber, expectedSeqNumber);
         }
+        seqNumbers.put(sourceClientId, expectedSeqNumber + 1);
 
         LocationReport locationReport = locationReports.get(new Pair<>(locationRequest.getUserId(), locationRequest.getEp()));
         if (locationReport == null) {
@@ -636,7 +643,7 @@ public class Server {
         }
 
         System.out.println("Server: Obtaining location for " + locationRequest.getUserId() + " at epoch " + locationRequest.getEp());
-        seqNumbers.put(sourceClientId, expectedSeqNumber + 1);
+
         this.saveCurrentServerState();
 
         byte[] encodedKey = Crypto.generateSecretKey();
@@ -688,7 +695,10 @@ public class Server {
         }
 
         int expectedSeqNumber = seqNumbers.get(-1);
-        if (receivedSeqNumber != expectedSeqNumber) throw new StaleException(-1, receivedSeqNumber, expectedSeqNumber);
+        if (receivedSeqNumber != expectedSeqNumber) {
+            System.out.println("Server" + this.id + ": Sequence numbers do not match! Received " + receivedSeqNumber + " however expected " + expectedSeqNumber);
+            throw new StaleException(-1, receivedSeqNumber, expectedSeqNumber);
+        }
         seqNumbers.put(-1, expectedSeqNumber + 1);
 
         byte[] encodedKey = Crypto.generateSecretKey();
@@ -733,12 +743,12 @@ public class Server {
 
         if (receivedSeqNumber != expectedSeqNumber) throw new StaleException(clientId, receivedSeqNumber, expectedSeqNumber);
 
+        seqNumbers.put(clientId, expectedSeqNumber + 1);
+
         if (!Crypto.verify(requestContent + secretKeySpec.toString(), request.getSignature(), this.getUserPublicKey(clientId))) {
-            System.out.println("Server: user" + clientId + " tried to illegitimately request users' proofs at cetain epochs");
+            System.out.println("Server" + this.id + ": user" + clientId + " tried to illegitimately request users' proofs at certain epochs");
             throw new InvalidSignatureException();
         }
-
-        seqNumbers.put(clientId, expectedSeqNumber + 1);
 
         return buildRequestMyProofsResponse(proofsRequest, clientId, seqNumbers.get(clientId));
     }
@@ -755,7 +765,7 @@ public class Server {
             for (Integer witnessId : locationReport.getLocationProofsContent().keySet()) {
                 if (witnessId != proofsRequest.getUserId()) continue;
 
-                System.out.println("Server: user" + userId + " prooved user" + locationReport.getLocationProver().getUserId() + " location ( " + locationReport.getLocationProver().getLatitude() + ", " + locationReport.getLocationProver().getLongitude() + " ) at " + locationReport.getLocationProver().getEp());
+                System.out.println("Server: user" + userId + " proved user" + locationReport.getLocationProver().getUserId() + " location ( " + locationReport.getLocationProver().getLatitude() + ", " + locationReport.getLocationProver().getLongitude() + " ) at " + locationReport.getLocationProver().getEp());
 
                 String locationProofContent = locationReport.getLocationProofsContent().get(witnessId);
 
@@ -778,7 +788,7 @@ public class Server {
                 .build();
     }
 
-    private LocationServer.SubmitLocationReportResponse buildSubmitLocationReportResponse(boolean verified, int userId) throws GeneralSecurityException {
+    LocationServer.SubmitLocationReportResponse buildSubmitLocationReportResponse(boolean verified, int userId) throws GeneralSecurityException {
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
         SubmitLocationReportResponse response = new SubmitLocationReportResponse(userId, this.id, verified);
@@ -820,6 +830,8 @@ public class Server {
         node.put("step", step);
         node.put("maxByzantineUsers", maxByzantineUsers);
         node.put("maxNearbyByzantineUsers", maxNearbyByzantineUsers);
+        node.put("maxReplicas", maxReplicas);
+        node.put("maxByzantineReplicas", maxByzantineReplicas);
         node.set("locationReports", arrayNode);
         node.set("seqNumbers", seqArrayNode);
 

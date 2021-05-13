@@ -23,7 +23,6 @@ import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static io.grpc.Status.ALREADY_EXISTS;
 import static io.grpc.Status.DEADLINE_EXCEEDED;
 
 abstract class AbstractClient {
@@ -171,7 +170,7 @@ abstract class AbstractClient {
             return false;
         }
 
-        if (receivedSeqNumber != currentSeqNumber + 1) {
+        if (receivedSeqNumber != currentSeqNumber) {
             System.out.println("user" + getClientId() + ": Server should not be trusted! Received sequence number " + receivedSeqNumber + " but expected " + currentSeqNumber);
             return false;
         }
@@ -445,6 +444,14 @@ abstract class AbstractClient {
         }
     }
 
+    private Location obtainLocationFromReportResponse(LocationServer.ObtainLocationReportResponse response) throws JsonProcessingException, GeneralSecurityException {
+        ObjectMapper objectMapper = new ObjectMapper();
+        SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
+        String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getLocationProver().getContent());
+
+        return objectMapper.readValue(locationProverContent, Location.class);
+    }
+
     public Location obtainLocationReportAtomic(int userId, int ep) throws GeneralSecurityException, InterruptedException, JsonProcessingException {
         List<LocationServer.ObtainLocationReportResponse> reportResponses = new ArrayList<>();
 
@@ -458,9 +465,12 @@ abstract class AbstractClient {
 
                     try {
                         if (response != null && verifyLocationReport(userId, ep, response)) {
+                            ObjectMapper objectMapper = new ObjectMapper();
                             SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
                             int serverId = Integer.parseInt(Crypto.decryptAES(secretKeySpec, response.getServerId()));
-                            seqNumbers.put(serverId, seqNumbers.get(serverId) + 1);
+                            String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getLocationProver().getContent());
+                            Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
+
                             reportResponses.add(response);
                             while (finishLatch.getCount() > 0) {
                                 finishLatch.countDown();
@@ -490,6 +500,7 @@ abstract class AbstractClient {
         for (int serverId : locationServerServiceStubs.keySet()) {
             LocationServer.ObtainLocationReportRequest request = this.buildObtainLocationReportRequest(userId, ep, this.seqNumbers.get(serverId), serverId);
             obtainLocationReport(locationServerServiceStubs.get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver);
+            seqNumbers.put(serverId, seqNumbers.get(serverId) + 1);
         }
 
         finishLatch.await(5, TimeUnit.SECONDS);
@@ -504,8 +515,7 @@ abstract class AbstractClient {
             }
         }
 
-        // TODO Return location
-        return null;
+        return obtainLocationFromReportResponse(reportResponses.get(0));
     }
 
     public void obtainLocationReport(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.ObtainLocationReportRequest request, Consumer<LocationServer.ObtainLocationReportResponse> callbackOnSuccess, Consumer<Throwable> callbackOnError) {
@@ -602,5 +612,9 @@ abstract class AbstractClient {
         } finally {
             System.out.println("> Closing");
         }
+    }
+
+    public void cleanSeqNumbers() {
+        //seqNumbers.clear();
     }
 }

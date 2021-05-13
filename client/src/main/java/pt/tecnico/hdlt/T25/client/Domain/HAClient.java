@@ -79,6 +79,7 @@ public class HAClient extends AbstractClient {
 
                     try {
                         if (verifyObtainUsersAtLocationResponse(response)) {
+                            System.out.println("Entered");
                             ObjectMapper objectMapper = new ObjectMapper();
                             SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
 
@@ -91,7 +92,7 @@ public class HAClient extends AbstractClient {
                                 }
                             }
                             int serverId = Integer.parseInt(Crypto.decryptAES(secretKeySpec, response.getServerId()));
-                            getSeqNumbers().put(serverId, getSeqNumbers().get(serverId) + 1);
+                            System.out.println("Finished");
                             finishLatch.countDown();
                         }
                     } catch (JsonProcessingException ex) {
@@ -104,8 +105,10 @@ public class HAClient extends AbstractClient {
         };
 
         for (int serverId : getLocationServerServiceStubs().keySet()) {
+            System.out.println("Sending request to server" + serverId);
             LocationServer.ObtainUsersAtLocationRequest request = buildObtainUsersAtLocationRequest(latitude, longitude, ep, this.getSeqNumbers().get(serverId), serverId);
             obtainUsersAtLocation(getLocationServerServiceStubs().get(serverId), request, requestObserver);
+            getSeqNumbers().put(serverId, getSeqNumbers().get(serverId) + 1);
         }
 
         finishLatch.await(5, TimeUnit.SECONDS);
