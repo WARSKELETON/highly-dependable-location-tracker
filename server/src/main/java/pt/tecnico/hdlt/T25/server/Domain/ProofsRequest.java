@@ -4,18 +4,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.ArrayList;
+import java.util.Set;
 
 public class ProofsRequest {
 
     private int userId;
-    private ArrayList<Integer> eps;
+    private Set<Integer> eps;
     private int seqNumber;
     private int serverId;
 
     public ProofsRequest() {
     }
 
-    public ProofsRequest(int userId, ArrayList<Integer> eps, int seqNumber, int serverId) {
+    public ProofsRequest(int userId, Set<Integer> eps, int seqNumber, int serverId) {
         this.userId = userId;
         this.eps = eps;
         this.seqNumber = seqNumber;
@@ -26,7 +27,7 @@ public class ProofsRequest {
         return userId;
     }
 
-    public ArrayList<Integer> getEps() {
+    public Set<Integer> getEps() {
         return eps;
     }
 

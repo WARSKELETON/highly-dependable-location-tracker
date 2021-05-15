@@ -296,7 +296,7 @@ public class Client extends AbstractClient {
         }
     }
 
-    private LocationServer.RequestMyProofsRequest buildRequestMyProofsRequest(int userId, ArrayList<Integer> eps, int currentSeqNumber, int serverId) throws GeneralSecurityException {
+    private LocationServer.RequestMyProofsRequest buildRequestMyProofsRequest(int userId, Set<Integer> eps, int currentSeqNumber, int serverId) throws GeneralSecurityException {
         ProofsRequest proofsRequest = new ProofsRequest(userId, eps, currentSeqNumber, serverId);
         String requestContent = proofsRequest.toJsonString();
 
@@ -312,7 +312,7 @@ public class Client extends AbstractClient {
                 .build();
     }
 
-    private Map<Pair<Integer, Integer>, LocationProof> verifyMyProofsResponse(int clientId, List<Integer> eps, LocationServer.RequestMyProofsResponse response) throws GeneralSecurityException, JsonProcessingException {
+    private Map<Pair<Integer, Integer>, LocationProof> verifyMyProofsResponse(int clientId, Set<Integer> eps, LocationServer.RequestMyProofsResponse response) throws GeneralSecurityException, JsonProcessingException {
         Map<Pair<Integer, Integer>, LocationProof> locationProofs = new HashMap<>();
         ObjectMapper objectMapper = new ObjectMapper();
 
@@ -323,8 +323,8 @@ public class Client extends AbstractClient {
         int serverId = Integer.parseInt(Crypto.decryptAES(secretKeySpec, response.getServerId()));
         int currentSeqNumber = this.getSeqNumbers().get(serverId);
 
-        if (receivedSeqNumber != currentSeqNumber + 1) {
-            System.out.println("user" + getClientId() + ": Server should not be trusted! Received sequence number " + receivedSeqNumber + " but expected " + currentSeqNumber);
+        if (receivedSeqNumber != currentSeqNumber) {
+            System.out.println("user" + getClientId() + ": Server" + serverId + " should not be trusted! Received sequence number " + receivedSeqNumber + " but expected " + currentSeqNumber);
             return null;
         }
 
@@ -333,7 +333,7 @@ public class Client extends AbstractClient {
             LocationProof proof = objectMapper.readValue(locationProofContent, LocationProof.class);
 
             if (proof.getWitnessId() != clientId || !eps.contains(proof.getEp()) || !Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(proof.getWitnessId()))) {
-                System.out.println("user" + getClientId() + ": Server should not be trusted! Returned illegitimate proof! User " + clientId + " did not prove user" + proof.getUserId() + "location at " + proof.getEp() + " " + proof.getLatitude() + ", " + proof.getLongitude());
+                System.out.println("user" + getClientId() + ": Server" + serverId + " should not be trusted! Returned illegitimate proof! User " + clientId + " did not prove user" + proof.getUserId() + " location at " + proof.getEp() + " " + proof.getLatitude() + ", " + proof.getLongitude());
                 continue;
             }
             locationProofs.put(new Pair<>(proof.getUserId(), proof.getEp()), proof);
@@ -342,7 +342,7 @@ public class Client extends AbstractClient {
         return locationProofs;
     }
 
-    private List<LocationProof> requestMyProofsRegular(int userId, ArrayList<Integer> eps) throws GeneralSecurityException, InterruptedException, JsonProcessingException {
+    public List<LocationProof> requestMyProofsRegular(int userId, Set<Integer> eps) throws GeneralSecurityException, InterruptedException, JsonProcessingException {
         Map<Pair<Integer, Integer>, LocationProof> locationProofs = new HashMap<>();
 
         final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
@@ -451,7 +451,7 @@ public class Client extends AbstractClient {
                 }
                 case REQUEST_MY_PROOFS: {
                     int i;
-                    ArrayList<Integer> eps = new ArrayList<>();
+                    Set<Integer> eps = new HashSet<>();
 
                     for (i = 1; i < args.length; i++) {
                         eps.add(Integer.parseInt(args[i]));

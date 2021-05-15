@@ -1,22 +1,16 @@
 package pt.tecnico.hdlt.T25.client;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import io.grpc.Status;
-import io.grpc.StatusRuntimeException;
 import org.junit.jupiter.api.*;
-import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.client.Domain.ByzantineClient;
 import pt.tecnico.hdlt.T25.client.Domain.Client;
 import pt.tecnico.hdlt.T25.client.Domain.Location;
-import pt.tecnico.hdlt.T25.crypto.Crypto;
+import pt.tecnico.hdlt.T25.client.Domain.LocationProof;
 import pt.tecnico.hdlt.T25.server.Domain.ByzantineServer;
 import pt.tecnico.hdlt.T25.server.Domain.Server;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
-import java.security.PrivateKey;
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.*;
@@ -49,13 +43,13 @@ public class Stage2IT extends TestBase {
     }
 
     @Test
-    public void ByzantineClientInjectsFakeReportInByzantineServer() throws InterruptedException, GeneralSecurityException, JsonProcessingException {
+    public void ByzantineClientInjectsFakeReportInByzantineServer() throws InterruptedException, GeneralSecurityException, IOException {
         ByzantineClient byzantineClient = byzantineClients.get(new ArrayList<>(byzantineClients.keySet()).get(new Random().nextInt(byzantineClients.keySet().size())));
         for (ByzantineClient bc : byzantineClients.values()) {
             if (bc.getClientId() == byzantineClient.getClientId()) {
                 bc.setFlavor(ByzantineClient.Flavor.STUBBORN);
                 continue;
-            };
+            }
 
             bc.setFlavor(ByzantineClient.Flavor.CONSPIRATOR);
         }
@@ -168,7 +162,7 @@ public class Stage2IT extends TestBase {
     }
 
     @Test
-    public void ByzantineClientSpoofsProofReportToByzantineServer() throws InterruptedException, GeneralSecurityException, JsonProcessingException {
+    public void ByzantineClientSpoofsProofReportToByzantineServer() throws InterruptedException, GeneralSecurityException, IOException {
         ByzantineClient byzantineClient = byzantineClients.get(new ArrayList<>(byzantineClients.keySet()).get(new Random().nextInt(byzantineClients.keySet().size())));
         boolean selected = false;
         for (ByzantineClient bc : byzantineClients.values()) {
@@ -209,5 +203,17 @@ public class Stage2IT extends TestBase {
         Assertions.assertEquals(spoofedLocation.getEp(), locationResponse.getEp());
         Assertions.assertEquals(spoofedLocation.getLatitude(), locationResponse.getLatitude());
         Assertions.assertEquals(spoofedLocation.getLongitude(), locationResponse.getLongitude());
+
+        Client client = clients.get(0);
+        Set<Integer> eps = new HashSet<>();
+        eps.add(0);
+
+        servers.get(0).shutdownServer();
+
+        List<LocationProof> locationProofs = client.requestMyProofsRegular(client.getClientId(), eps);
+
+        Assertions.assertEquals(0, locationProofs.size());
+
+        servers.get(0).startServer();
     }
 }
