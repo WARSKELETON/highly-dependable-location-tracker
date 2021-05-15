@@ -33,6 +33,7 @@ public class ByzantineClient extends Client {
     }
 
     private Flavor flavor;
+    private List<Integer> victimIds;
 
     public ByzantineClient(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxByzantineUsers, int maxNearbyByzantineUsers, Flavor flavor, boolean isTest, int maxReplicas, int maxByzantineReplicas) throws IOException, GeneralSecurityException, InterruptedException {
         super(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, isTest, maxReplicas, maxByzantineReplicas);
@@ -45,6 +46,14 @@ public class ByzantineClient extends Client {
 
     public void setFlavor(Flavor flavor) {
         this.flavor = flavor;
+    }
+
+    public List<Integer> getVictimIds() {
+        return victimIds;
+    }
+
+    public void setVictimIds(List<Integer> victimIds) {
+        this.victimIds = victimIds;
     }
 
     public LocationServer.ObtainUsersAtLocationRequest buildObtainUsersAtLocationRequest(int latitude, int longitude, int ep, int currentSeqNumber, int serverId) throws GeneralSecurityException {
@@ -194,7 +203,7 @@ public class ByzantineClient extends Client {
         long count = finishLatch.getCount();
 
         // If necessary build own fake locations proof to complete quorum
-        while (count > 0) {
+/*        while (count > 0) {
             int victimClientId = new Random().nextInt(getSystemInfo().getNumberOfUsers());
             System.out.println("Byzantine user" + getClientId() + ": building fake proof of my location complete report of " + getMaxByzantineUsers() + " proofs");
             LocationProof locationProof = new LocationProof(clientId, ep, latitude, longitude, victimClientId);
@@ -202,7 +211,7 @@ public class ByzantineClient extends Client {
             locationProofsSignatures.put(victimClientId, Crypto.sign(locationProof.toJsonString(), this.getPrivateKey()));
 
             count--;
-        }
+        }*/
 
         String signature = location.toJsonString() + locationProofsContent.values().stream().reduce("", String::concat);
         LocationReport locationReport = new LocationReport(location, Crypto.sign(signature, this.getPrivateKey()), locationProofsContent, locationProofsSignatures);
@@ -295,9 +304,7 @@ public class ByzantineClient extends Client {
         ObjectMapper objectMapper = new ObjectMapper();
         LocationProof locationProof = objectMapper.readValue(request.getContent(), LocationProof.class);
 
-        List<Integer> nearbyUsers = getNearbyUsers(getMyLocation(locationProof.getEp()));
-
-        locationProof.setWitnessId(nearbyUsers.get(0));
+        locationProof.setWitnessId(victimIds.get(0));
 
         String content = locationProof.toJsonString();
 

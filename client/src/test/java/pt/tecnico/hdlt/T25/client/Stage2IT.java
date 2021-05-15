@@ -170,13 +170,21 @@ public class Stage2IT extends TestBase {
     @Test
     public void ByzantineClientSpoofsProofReportToByzantineServer() throws InterruptedException, GeneralSecurityException, JsonProcessingException {
         ByzantineClient byzantineClient = byzantineClients.get(new ArrayList<>(byzantineClients.keySet()).get(new Random().nextInt(byzantineClients.keySet().size())));
+        boolean selected = false;
         for (ByzantineClient bc : byzantineClients.values()) {
+            bc.setVictimIds(new ArrayList<>(clients.keySet()));
+
             if (bc.getClientId() == byzantineClient.getClientId()) {
                 bc.setFlavor(ByzantineClient.Flavor.STUBBORN);
                 continue;
             }
 
-            bc.setFlavor(ByzantineClient.Flavor.IMPERSONATE_DETERMINISTIC);
+            if (!selected) {
+                bc.setFlavor(ByzantineClient.Flavor.IMPERSONATE_DETERMINISTIC);
+                selected = true;
+                continue;
+            }
+            bc.setFlavor(ByzantineClient.Flavor.CONSPIRATOR);
         }
 
         for (ByzantineServer byzantineServer : byzantineServers.values()) {
