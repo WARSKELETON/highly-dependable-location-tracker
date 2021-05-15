@@ -23,6 +23,7 @@ import static io.grpc.Status.DEADLINE_EXCEEDED;
 public class ByzantineClient extends Client {
 
     public enum Flavor {
+        IMPERSONATE_DETERMINISTIC,
         IMPERSONATE,
         SILENT,
         SPOOFER,
@@ -217,6 +218,8 @@ public class ByzantineClient extends Client {
     @Override
     public Proximity.LocationProofResponse buildLocationProof(Proximity.LocationProofRequest request) throws JsonProcessingException {
         switch (flavor) {
+            case IMPERSONATE_DETERMINISTIC:
+                return buildFalseLocationProofImpersonateDeterministic(request);
             case IMPERSONATE:
                 return buildFalseLocationProofImpersonate(request);
             case SILENT:
@@ -267,7 +270,7 @@ public class ByzantineClient extends Client {
                 .build();
     }
 
-    // Byzantine user responds impersonating as another witness
+    // Byzantine user responds impersonating as another random witness
     private Proximity.LocationProofResponse buildFalseLocationProofImpersonate(Proximity.LocationProofRequest request) throws JsonProcessingException {
 
         ObjectMapper objectMapper = new ObjectMapper();
@@ -276,6 +279,25 @@ public class ByzantineClient extends Client {
         List<Integer> nearbyUsers = getNearbyUsers(getMyLocation(locationProof.getEp()));
 
         locationProof.setWitnessId(nearbyUsers.get(new Random().nextInt(nearbyUsers.size())));
+
+        String content = locationProof.toJsonString();
+
+        return Proximity.LocationProofResponse
+                .newBuilder()
+                .setContent(content)
+                .setSignature(Crypto.sign(content, this.getPrivateKey()))
+                .build();
+    }
+
+    // Byzantine user responds impersonating a specific witness
+    private Proximity.LocationProofResponse buildFalseLocationProofImpersonateDeterministic(Proximity.LocationProofRequest request) throws JsonProcessingException {
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        LocationProof locationProof = objectMapper.readValue(request.getContent(), LocationProof.class);
+
+        List<Integer> nearbyUsers = getNearbyUsers(getMyLocation(locationProof.getEp()));
+
+        locationProof.setWitnessId(nearbyUsers.get(0));
 
         String content = locationProof.toJsonString();
 

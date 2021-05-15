@@ -139,7 +139,7 @@ public class Stage2IT extends TestBase {
 
     @Test
     @Timeout(value = 20, unit = SECONDS)
-    public void ByzantineClientFakeReportInByzantineServerFailingBRB() throws InterruptedException, GeneralSecurityException, JsonProcessingException {
+    public void ByzantineClientFakeReportInByzantineServerFailingBRB() throws InterruptedException, GeneralSecurityException {
         ByzantineClient byzantineClient = byzantineClients.get(new ArrayList<>(byzantineClients.keySet()).get(new Random().nextInt(byzantineClients.keySet().size())));
         for (ByzantineClient bc : byzantineClients.values()) {
             if (bc.getClientId() == byzantineClient.getClientId()) {
@@ -165,5 +165,41 @@ public class Stage2IT extends TestBase {
         byzantineClient.createLocationReport(byzantineClient.getClientId(), 0, spoofedLocation.getLatitude(), spoofedLocation.getLongitude());
 
         byzantineClient.submitLocationReportAtomic(0);
+    }
+
+    @Test
+    public void ByzantineClientSpoofsProofReportToByzantineServer() throws InterruptedException, GeneralSecurityException, JsonProcessingException {
+        ByzantineClient byzantineClient = byzantineClients.get(new ArrayList<>(byzantineClients.keySet()).get(new Random().nextInt(byzantineClients.keySet().size())));
+        for (ByzantineClient bc : byzantineClients.values()) {
+            if (bc.getClientId() == byzantineClient.getClientId()) {
+                bc.setFlavor(ByzantineClient.Flavor.STUBBORN);
+                continue;
+            }
+
+            bc.setFlavor(ByzantineClient.Flavor.IMPERSONATE_DETERMINISTIC);
+        }
+
+        for (ByzantineServer byzantineServer : byzantineServers.values()) {
+            byzantineServer.setFlavor(ByzantineServer.Flavor.UNVERIFIED);
+        }
+
+        assert byzantineClient != null;
+        Location spoofedLocation = new Location(byzantineClient.getClientId(), 0, 0, 0);
+
+        int gridIndex = new Random().nextInt(systemInfo.getGrid().size());
+        spoofedLocation.setLatitude(systemInfo.getGrid().get(gridIndex).getLatitude());
+        spoofedLocation.setLongitude(systemInfo.getGrid().get(gridIndex).getLongitude());
+        System.out.println("byzantineUser" + byzantineClient.getClientId() + " building a fake report for spoofed location: " + spoofedLocation.getLatitude() + ", " + spoofedLocation.getLongitude());
+
+        byzantineClient.createLocationReport(byzantineClient.getClientId(), 0, spoofedLocation.getLatitude(), spoofedLocation.getLongitude());
+
+        byzantineClient.submitLocationReportAtomic(0);
+
+        Location locationResponse = byzantineClient.obtainLocationReportAtomic(byzantineClient.getClientId(), 0);
+
+        Assertions.assertEquals(spoofedLocation.getUserId(), locationResponse.getUserId());
+        Assertions.assertEquals(spoofedLocation.getEp(), locationResponse.getEp());
+        Assertions.assertEquals(spoofedLocation.getLatitude(), locationResponse.getLatitude());
+        Assertions.assertEquals(spoofedLocation.getLongitude(), locationResponse.getLongitude());
     }
 }
