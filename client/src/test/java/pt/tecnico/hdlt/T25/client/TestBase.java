@@ -21,9 +21,14 @@ public class TestBase {
     static HAClient haClient;
     static Map<Integer, Client> clients;
     static Map<Integer, Server> servers;
+    static Map<Integer, ByzantineServer> byzantineServers;
     static Map<Integer, ByzantineClient> byzantineClients;
     static SystemInfo systemInfo;
     static int serverPort;
+    static int maxByzantineUsers;
+    static int maxNearbyByzantineUsers;
+    static int maxReplicas;
+    static int maxByzantineReplicas;
 
     @BeforeAll
     public static void oneTimeSetup() throws IOException {
@@ -51,20 +56,21 @@ public class TestBase {
 
             final String serverHost = testProps.getProperty("server.host");
             serverPort = Integer.parseInt(testProps.getProperty("server.port"));
-            final int maxByzantineUsers = Integer.parseInt(testProps.getProperty("maxByzantineUsers"));
-            final int maxNearbyByzantineUsers = Integer.parseInt(testProps.getProperty("maxNearbyByzantineUsers"));
-            final int maxReplicas = Integer.parseInt(testProps.getProperty("server.maxReplicas"));
-            final int maxByzantineReplicas = Integer.parseInt(testProps.getProperty("server.maxByzantineReplicas"));
+            maxByzantineUsers = Integer.parseInt(testProps.getProperty("maxByzantineUsers"));
+            maxNearbyByzantineUsers = Integer.parseInt(testProps.getProperty("maxNearbyByzantineUsers"));
+            maxReplicas = Integer.parseInt(testProps.getProperty("server.maxReplicas"));
+            maxByzantineReplicas = Integer.parseInt(testProps.getProperty("server.maxByzantineReplicas"));
 
             servers = new HashMap<>();
+            byzantineServers = new HashMap<>();
             Thread task = new Thread(() -> {
                 try {
                     for (int i = 0; i < maxReplicas; i++) {
                         System.out.println("Starting server with id " + i);
                         if (i != 3) {
-                            servers.put(i, new Server(i, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas));
+                            servers.put(i, new Server(i, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
                         } else {
-                            servers.put(i, new ByzantineServer(i, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas));
+                            byzantineServers.put(i, new ByzantineServer(i, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
                         }
                     }
                 } catch (Exception e) {

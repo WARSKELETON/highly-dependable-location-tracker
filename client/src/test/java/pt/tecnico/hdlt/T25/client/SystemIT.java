@@ -9,6 +9,7 @@ import pt.tecnico.hdlt.T25.client.Domain.ByzantineClient;
 import pt.tecnico.hdlt.T25.client.Domain.Client;
 import pt.tecnico.hdlt.T25.client.Domain.Location;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
+import pt.tecnico.hdlt.T25.server.Domain.ByzantineServer;
 import pt.tecnico.hdlt.T25.server.Domain.Server;
 
 import java.io.IOException;
@@ -31,6 +32,10 @@ public class SystemIT extends TestBase {
     public void tearDown() {
         for (Server server : servers.values()) {
             server.cleanUp();
+        }
+
+        for (ByzantineServer byzantineServer : byzantineServers.values()) {
+            byzantineServer.cleanUp();
         }
 
         for (Client client : clients.values()) {
@@ -410,5 +415,5 @@ public class SystemIT extends TestBase {
         Assertions.assertEquals(originalLocation.getEp(), locationResponse.getEp());
         Assertions.assertEquals(originalLocation.getLatitude(), locationResponse.getLatitude());
         Assertions.assertEquals(originalLocation.getLongitude(), locationResponse.getLongitude());
-    }*/
+    } */
 }

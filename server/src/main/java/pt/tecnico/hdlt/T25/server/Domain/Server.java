@@ -63,7 +63,7 @@ public class Server {
     private Map<Integer, ByzantineReliableBroadcastServiceGrpc.ByzantineReliableBroadcastServiceStub> brbStubs;
     private Map<Pair<Integer, Integer>, LocationReport> locationReports; // <UserId, Epoch> to Location Report
 
-    public Server(int serverId, int numberOfUsers, int step, int maxByzantineUsers, int maxNearbyByzantineUsers, int maxReplicas, int maxByzantineReplicas) throws IOException, GeneralSecurityException, InterruptedException {
+    public Server(int serverId, int numberOfUsers, int step, int maxByzantineUsers, int maxNearbyByzantineUsers, int maxReplicas, int maxByzantineReplicas, boolean isTest) throws IOException, GeneralSecurityException, InterruptedException {
         this.id = serverId;
         this.SERVER_RECOVERY_FILE_PATH = "resources/server_state" + serverId + ".json";
         this.BACKUP_RECOVERY_FILE_PATH = "resources/backup_state" + serverId + ".json";
@@ -82,15 +82,19 @@ public class Server {
         this.loadPreviousState();
         this.startServer();
         this.connectToServers();
-        //server.awaitTermination();
+        if (!isTest) server.awaitTermination();
     }
 
     PrivateKey getPrivateKey() {
         return privateKey;
     }
 
+    public int getId() {
+        return id;
+    }
+
     private void connectToServers() {
-        brbStubs = new HashMap<>();
+        brbStubs = new ConcurrentHashMap<>();
         for (int i = 0; i < maxReplicas; i++) {
             int port = SERVER_ORIGINAL_PORT + i;
             String target = "localhost:" + port;
@@ -134,14 +138,14 @@ public class Server {
     private void loadPreviousState() {
         try {
             recoverServerState(SERVER_RECOVERY_FILE_PATH);
-            System.out.println("Server: Recovered previous state successfully.");
+            System.out.println("Server" + this.id + ": Recovered previous state successfully.");
         }
         catch (IOException|NullPointerException e) {
             try {
                 recoverServerState(BACKUP_RECOVERY_FILE_PATH);
-                System.out.println("Server: Recovered backup previous state successfully.");
+                System.out.println("Server" + this.id + ": Recovered backup previous state successfully.");
             } catch (IOException|NullPointerException e1) {
-                System.out.println("Server: Failed to parse previous state.");
+                System.out.println("Server" + this.id + ": Failed to parse previous state.");
             }
         }
     }
@@ -192,13 +196,13 @@ public class Server {
 
         server.start();
 
-        System.out.println("Server: Server started");
+        System.out.println("Server" + this.id + ": Server started");
     }
 
     public void shutdownServer() {
         server.shutdown();
 
-        System.out.println("Server: Server shutdown");
+        System.out.println("Server" + this.id + ": Server shutdown");
     }
 
     private PublicKey getServerPublicKey(int serverId) {
@@ -210,8 +214,8 @@ public class Server {
     }
 
     private void loadPublicKeys() throws GeneralSecurityException {
-        this.clientPublicKeys = new HashMap<>();
-        this.serverPublicKeys = new HashMap<>();
+        this.clientPublicKeys = new ConcurrentHashMap<>();
+        this.serverPublicKeys = new ConcurrentHashMap<>();
 
         for (int i = 0; i < this.numberOfUsers; i++) {
             String fileName = "client" + i + "-pub.key";
@@ -254,7 +258,7 @@ public class Server {
         int clientId = seqNumberMessage.getClientId();
 
         if (!Crypto.verify(requestContent, request.getSignature(), this.getUserPublicKey(clientId))) {
-            System.out.println("Server: Some user tried to illegitimately request user" + clientId + " sequence number");
+            System.out.println("Server" + this.id + ": Some user tried to illegitimately request user" + clientId + " sequence number");
             throw new InvalidSignatureException();
         }
 
@@ -297,7 +301,7 @@ public class Server {
         String reportContent = locationProverContent + locationProofsContent.values().stream().reduce("", String::concat);
         String signatureContent = reportContent + secretKeySpec.toString() + serverIdSender + this.id;
         if (!Crypto.verify(signatureContent, ready.getSignature(), this.getServerPublicKey(serverIdSender))) {
-            System.out.println("Server: Report failed integrity or authentication checks in echo! User" + sourceClientId + " ep " + locationProver.getEp() + " coords " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
+            System.out.println("Server" + this.id + ": Report failed integrity or authentication checks in echo! User" + sourceClientId + " ep " + locationProver.getEp() + " coords " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
             throw new InvalidSignatureException();
         }
 
@@ -384,7 +388,7 @@ public class Server {
             if (Crypto.verify(receivedSignatureContent, request.getLocationProver().getSignature(), this.getUserPublicKey(sourceClientId))) {
                 matches++;
             } else {
-                System.out.println("Server: Request does not match!");
+                System.out.println("Server" + this.id + ": Request does not match!");
             }
         }
 
@@ -549,7 +553,7 @@ public class Server {
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
 
-        System.out.println("Server: Initiating verification of report with location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+        System.out.println("Server" + this.id + ": Initiating verification of report with location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
 
         // Check each location proof in the report
         for (LocationServer.LocationMessage locationProof : report.getLocationProofsList()) {
@@ -564,9 +568,9 @@ public class Server {
             // Witness must be distinct, different from Prover, the location proof matches prover's location and the signature is correct & authentic (from the witness)
             if (!witnessIds.contains(witnessId) && witnessId != locationProver.getUserId() && this.verifyLocationProof(proof, locationProver) && Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(witnessId))) {
                 witnessIds.add(witnessId);
-                System.out.println("Server: Obtained legitimate witness proof from Witness" + witnessId + " witnessed User" + proof.getUserId() + " at " + proof.getEp() + " " + proof.getLatitude() +  ", " + proof.getLongitude());
+                System.out.println("Server" + this.id + ": Obtained legitimate witness proof from Witness" + witnessId + " witnessed User" + proof.getUserId() + " at " + proof.getEp() + " " + proof.getLatitude() +  ", " + proof.getLongitude());
             } else {
-                System.out.println("Server: Obtained illegitimate witness proof from Witness" + proof.getWitnessId() + " where User" + proof.getUserId() + " would be at " + proof.getEp() + " " + proof.getLatitude() +  ", " + proof.getLongitude());
+                System.out.println("Server" + this.id + ": Obtained illegitimate witness proof from Witness" + proof.getWitnessId() + " where User" + proof.getUserId() + " would be at " + proof.getEp() + " " + proof.getLatitude() +  ", " + proof.getLongitude());
             }
         }
 
@@ -575,13 +579,13 @@ public class Server {
         String requestContentString = proofOfWorkContent + header.getProofOfWork() + header.getCounter();
 
         if (!verifyProofOfWork(proofOfWorkContent, header.getProofOfWork(), header.getCounter())) {
-            System.out.println("Server: Report failed proof of work checks! User" + locationProver.getUserId() + " would be at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+            System.out.println("Server" + this.id + ": Report failed proof of work checks! User" + locationProver.getUserId() + " would be at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
             throw new InvalidProofOfWorkException();
         }
 
         // Verify the whole report content and request
         if (!Crypto.verify(reportContentString, report.getLocationProver().getSignature(), this.getUserPublicKey(locationProver.getUserId())) || !Crypto.verify(requestContentString, report.getRequestSignature(), this.getUserPublicKey(senderClientId))) {
-            System.out.println("Server: Report failed integrity or authentication checks! User" + locationProver.getUserId() + " would be at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+            System.out.println("Server" + this.id + ": Report failed integrity or authentication checks! User" + locationProver.getUserId() + " would be at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
             throw new InvalidSignatureException();
         }
 
@@ -595,15 +599,15 @@ public class Server {
 
             if (!broadcastReport(locationReport)) {
                 cleanBrb(locationProver.getUserId());
-                System.out.println("Server: Failed to submit report! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+                System.out.println("Server" + this.id + ": Failed to submit report! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
                 return buildSubmitLocationReportResponse(false, locationProver.getUserId());
             }
             deliverReport(locationReport);
 
-            System.out.println("Server: Report submitted with success! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+            System.out.println("Server" + this.id + ": Report submitted with success! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
             return buildSubmitLocationReportResponse(true, locationProver.getUserId());
         }
-        System.out.println("Server: Failed to submit report! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+        System.out.println("Server" + this.id + ": Failed to submit report! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
         throw new InvalidNumberOfProofsException(witnessIds.size(), maxByzantineUsers);
     }
 
@@ -638,11 +642,11 @@ public class Server {
         String locationReportContent = locationReport.getLocationProver().toJsonString() + locationReport.getLocationProofsContent().values().stream().reduce("", String::concat);
 
         if ((!Crypto.verify(locationReportContent, locationReport.getLocationProverSignature(), this.getUserPublicKey(sourceClientId)) && sourceClientId != -1) || !Crypto.verify(requestContent, request.getSignature(), this.getUserPublicKey(sourceClientId))) {
-            System.out.println("Server: Some user tried to illegitimately request user" + locationRequest.getUserId() + " location at epoch " + locationRequest.getEp());
+            System.out.println("Server" + this.id + ": Some user tried to illegitimately request user" + locationRequest.getUserId() + " location at epoch " + locationRequest.getEp());
             throw new InvalidSignatureException();
         }
 
-        System.out.println("Server: Obtaining location for " + locationRequest.getUserId() + " at epoch " + locationRequest.getEp());
+        System.out.println("Server" + this.id + ": Obtaining location for " + locationRequest.getUserId() + " at epoch " + locationRequest.getEp());
 
         this.saveCurrentServerState();
 
@@ -690,7 +694,7 @@ public class Server {
         String expectedSignature = requestContent + secretKeySpec.toString() + receivedSeqNumber + this.id;
 
         if (!Crypto.verify(expectedSignature, request.getSignature(), this.getUserPublicKey(-1))) {
-            System.out.println("Server: some user tried to illegitimately request users' location at epoch " + locationRequest.getEp() + " " + locationRequest.getLatitude() + ", " + locationRequest.getLongitude());
+            System.out.println("Server" + this.id + ": some user tried to illegitimately request users' location at epoch " + locationRequest.getEp() + " " + locationRequest.getLatitude() + ", " + locationRequest.getLongitude());
             throw new InvalidSignatureException();
         }
 
@@ -719,7 +723,7 @@ public class Server {
         String serverSignature = reportSignatures.stream().reduce("", String::concat) + newSecretKeySpec.toString() + seqNumbers.get(-1) + this.id;
         this.saveCurrentServerState();
 
-        System.out.println("Server: Sending HAClient reports of users at epoch " + locationRequest.getEp() + " coords " + locationRequest.getLatitude() + ", " + locationRequest.getLongitude());
+        System.out.println("Server" + this.id + ": Sending HAClient reports of users at epoch " + locationRequest.getEp() + " coords " + locationRequest.getLatitude() + ", " + locationRequest.getLongitude());
         return LocationServer.ObtainUsersAtLocationResponse.newBuilder()
                 .setKey(Crypto.encryptRSA(getEncoder().encodeToString(encodedKey), this.getUserPublicKey(-1)))
                 .addAllLocationReports(locationReportResponses)
@@ -765,7 +769,7 @@ public class Server {
             for (Integer witnessId : locationReport.getLocationProofsContent().keySet()) {
                 if (witnessId != proofsRequest.getUserId()) continue;
 
-                System.out.println("Server: user" + userId + " proved user" + locationReport.getLocationProver().getUserId() + " location ( " + locationReport.getLocationProver().getLatitude() + ", " + locationReport.getLocationProver().getLongitude() + " ) at " + locationReport.getLocationProver().getEp());
+                System.out.println("Server" + this.id + ": user" + userId + " proved user" + locationReport.getLocationProver().getUserId() + " location ( " + locationReport.getLocationProver().getLatitude() + ", " + locationReport.getLocationProver().getLongitude() + " ) at " + locationReport.getLocationProver().getEp());
 
                 String locationProofContent = locationReport.getLocationProofsContent().get(witnessId);
 
@@ -843,6 +847,6 @@ public class Server {
         new File(SERVER_RECOVERY_FILE_PATH).delete();
         new File(BACKUP_RECOVERY_FILE_PATH).delete();
 
-        locationReports = new HashMap<>();
+        locationReports = new ConcurrentHashMap<>();
     }
 }

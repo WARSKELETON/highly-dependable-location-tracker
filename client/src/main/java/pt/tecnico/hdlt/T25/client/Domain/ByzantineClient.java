@@ -27,7 +27,8 @@ public class ByzantineClient extends Client {
         SILENT,
         SPOOFER,
         DIGEST,
-        CONSPIRATOR
+        CONSPIRATOR,
+        STUBBORN
     }
 
     private Flavor flavor;
@@ -322,6 +323,137 @@ public class ByzantineClient extends Client {
                 .setContent(content)
                 .setSignature(Crypto.sign(fakeContent, this.getPrivateKey()))
                 .build();
+    }
+
+    @Override
+    public void submitLocationReportAtomic(int ep) throws InterruptedException, GeneralSecurityException {
+        final CountDownLatch finishLatch = new CountDownLatch(getMaxByzantineReplicas());
+
+        Consumer<LocationServer.SubmitLocationReportResponse> requestOnSuccessObserver = new Consumer<>() {
+            @Override
+            public void accept(LocationServer.SubmitLocationReportResponse response)  {
+                synchronized (finishLatch) {
+                    if (finishLatch.getCount() == 0) return;
+
+                    try {
+                        ObjectMapper objectMapper = new ObjectMapper();
+                        SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
+                        String responseString = Crypto.decryptAES(secretKeySpec, response.getContent());
+                        SubmitLocationReportResponse submitResponse = objectMapper.readValue(responseString, SubmitLocationReportResponse.class);
+                        String signatureString = responseString + secretKeySpec.toString();
+
+                        if (Crypto.verify(signatureString, response.getSignature(), getServerPublicKey(submitResponse.getServerId())) && submitResponse.isOk()) {
+                            System.out.println("user" + getClientId() + ": Received submit location report response -> " + submitResponse.isOk());
+                            finishLatch.countDown();
+                        } else if (Crypto.verify(signatureString, response.getSignature(), getServerPublicKey(submitResponse.getServerId())) && !submitResponse.isOk()) {
+                            System.out.println("user" + getClientId() + ": Received submit location report not ok response -> " + submitResponse.isOk());
+                        }
+                    } catch (JsonProcessingException|GeneralSecurityException ex) {
+                        System.err.println("user" + getClientId() + ": caught processing exception while submitting report");
+                    }
+                }
+            }
+        };
+
+        Consumer<Throwable> requestOnErrorObserver = new Consumer<>() {
+            @Override
+            public void accept(Throwable throwable) {
+                synchronized (finishLatch) {
+                    if (finishLatch.getCount() == 0) return;
+
+                    if (throwable.getMessage().contains("ALREADY_EXISTS")) {
+                        System.out.println("user" + getClientId() + ": Duplicate report!");
+                        finishLatch.countDown();
+                    }
+                }
+            }
+        };
+
+        for (int serverId : getLocationServerServiceStubs().keySet()) {
+            LocationServer.SubmitLocationReportRequest request = buildSubmitLocationReportRequest(ep, serverId);
+            submitLocationReport(getLocationServerServiceStubs().get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver);
+        }
+
+        finishLatch.await(10, TimeUnit.SECONDS);
+
+        if (finishLatch.getCount() == 0) {
+            System.out.println("user" + getClientId() + ": Finished byzantine submission!");
+        } else {
+            System.out.println("user" + getClientId() + ": Retrying byzantine submit report!");
+            submitLocationReportAtomic(ep);
+        }
+    }
+
+    @Override
+    public Location obtainLocationReportAtomic(int userId, int ep) throws GeneralSecurityException, InterruptedException, JsonProcessingException {
+        List<LocationServer.ObtainLocationReportResponse> reportResponses = new ArrayList<>();
+
+        final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
+
+        Consumer<LocationServer.ObtainLocationReportResponse> requestOnSuccessObserver = new Consumer<>() {
+            @Override
+            public void accept(LocationServer.ObtainLocationReportResponse response) {
+                synchronized (finishLatch) {
+                    if (finishLatch.getCount() == 0) return;
+
+                    try {
+                        if (flavor != Flavor.STUBBORN && response != null && verifyLocationReport(userId, ep, response)) {
+                            ObjectMapper objectMapper = new ObjectMapper();
+                            SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
+                            int serverId = Integer.parseInt(Crypto.decryptAES(secretKeySpec, response.getServerId()));
+                            String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getLocationProver().getContent());
+                            Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
+
+                            reportResponses.add(response);
+                            while (finishLatch.getCount() > 0) {
+                                finishLatch.countDown();
+                            }
+                        } else if (flavor == Flavor.STUBBORN) {
+                            reportResponses.add(response);
+                            while (finishLatch.getCount() > 0) {
+                                finishLatch.countDown();
+                            }
+                        }
+                    } catch (JsonProcessingException | GeneralSecurityException ex) {
+                        System.err.println("user" + getClientId() + ": caught processing exception while obtaining report");
+                    }
+                }
+            }
+        };
+
+        Consumer<Throwable> requestOnErrorObserver = new Consumer<>() {
+            @Override
+            public void accept(Throwable throwable) {
+                synchronized (finishLatch) {
+                    if (finishLatch.getCount() == 0) return;
+
+                    if (throwable.getMessage().contains("NOT_FOUND") && flavor != Flavor.STUBBORN) {
+                        finishLatch.countDown();
+                    }
+                    System.out.println(throwable.getMessage());
+                }
+            }
+        };
+
+        for (int serverId : getLocationServerServiceStubs().keySet()) {
+            LocationServer.ObtainLocationReportRequest request = this.buildObtainLocationReportRequest(userId, ep, this.getSeqNumbers().get(serverId), serverId);
+            obtainLocationReport(getLocationServerServiceStubs().get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver);
+            this.getSeqNumbers().put(serverId, this.getSeqNumbers().get(serverId) + 1);
+        }
+
+        finishLatch.await(5, TimeUnit.SECONDS);
+
+        if (finishLatch.getCount() == 0 && !reportResponses.isEmpty()) {
+            return obtainLocationFromReportResponse(reportResponses.get(0));
+        } else {
+            if (finishLatch.getCount() == 0 && reportResponses.isEmpty()) {
+                return null;
+            } else {
+                obtainLocationReportAtomic(userId, ep);
+            }
+        }
+
+        return obtainLocationFromReportResponse(reportResponses.get(0));
     }
 
     @Override

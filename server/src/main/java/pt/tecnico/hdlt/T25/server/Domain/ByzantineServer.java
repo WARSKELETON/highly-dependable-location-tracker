@@ -16,8 +16,24 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class ByzantineServer extends Server {
-    public ByzantineServer(int serverId, int numberOfUsers, int step, int maxByzantineUsers, int maxNearbyByzantineUsers, int maxReplicas, int maxByzantineReplicas) throws IOException, GeneralSecurityException, InterruptedException {
-        super(serverId, numberOfUsers, step, maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas);
+    public enum Flavor {
+        BRBFOLLOWER,
+        UNVERIFIED
+    }
+
+    private Flavor flavor;
+
+    public ByzantineServer(int serverId, int numberOfUsers, int step, int maxByzantineUsers, int maxNearbyByzantineUsers, int maxReplicas, int maxByzantineReplicas, boolean isTest) throws IOException, GeneralSecurityException, InterruptedException {
+        super(serverId, numberOfUsers, step, maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, isTest);
+        this.flavor = Flavor.BRBFOLLOWER;
+    }
+
+    public Flavor getFlavor() {
+        return flavor;
+    }
+
+    public void setFlavor(Flavor flavor) {
+        this.flavor = flavor;
     }
 
     @Override
@@ -32,7 +48,7 @@ public class ByzantineServer extends Server {
         Map<Integer, String> locationProofsContent = new HashMap<>();
         Map<Integer, String> locationProofsSignatures = new HashMap<>();
 
-        System.out.println("Server: Initiating verification of report with location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+        System.out.println("Server" + this.getId() + ": Initiating verification of report with location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
 
         for (LocationServer.LocationMessage locationProof : report.getLocationProofsList()) {
             String locationProofContent = Crypto.decryptAES(secretKeySpec, locationProof.getContent());
@@ -46,14 +62,20 @@ public class ByzantineServer extends Server {
 
         LocationReport locationReport = new LocationReport(locationProver, report.getLocationProver().getSignature(), locationProofsContent, locationProofsSignatures);
 
-        if (!broadcastReport(locationReport)) {
+        if (this.flavor == Flavor.BRBFOLLOWER && !broadcastReport(locationReport)) {
             cleanBrb(locationProver.getUserId());
-            System.out.println("Server: Failed to submit report! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+            System.out.println("Server" + this.getId() + ": Failed to submit report! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
             return buildSubmitLocationReportResponse(false, locationProver.getUserId());
         }
         deliverReport(locationReport);
 
-        System.out.println("Server: Report submitted with success! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
+        System.out.println("Server" + this.getId() + ": Report submitted with success! Location: User" + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() +  ", " + locationProver.getLongitude());
         return buildSubmitLocationReportResponse(true, locationProver.getUserId());
+    }
+
+    @Override
+    public void cleanUp() {
+        super.cleanUp();
+        this.flavor = Flavor.BRBFOLLOWER;
     }
 }

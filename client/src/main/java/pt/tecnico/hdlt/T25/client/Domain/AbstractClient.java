@@ -357,7 +357,7 @@ abstract class AbstractClient {
                 .build();
     }
 
-    private void writeBackLocationReport(LocationServer.ObtainLocationReportResponse response) throws GeneralSecurityException, JsonProcessingException, InterruptedException {
+    void writeBackLocationReport(LocationServer.ObtainLocationReportResponse response) throws GeneralSecurityException, JsonProcessingException, InterruptedException {
 
         final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
 
@@ -444,7 +444,7 @@ abstract class AbstractClient {
         }
     }
 
-    private Location obtainLocationFromReportResponse(LocationServer.ObtainLocationReportResponse response) throws JsonProcessingException, GeneralSecurityException {
+    Location obtainLocationFromReportResponse(LocationServer.ObtainLocationReportResponse response) throws JsonProcessingException, GeneralSecurityException {
         ObjectMapper objectMapper = new ObjectMapper();
         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
         String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getLocationProver().getContent());

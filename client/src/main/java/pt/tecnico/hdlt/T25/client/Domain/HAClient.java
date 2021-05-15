@@ -79,7 +79,6 @@ public class HAClient extends AbstractClient {
 
                     try {
                         if (verifyObtainUsersAtLocationResponse(response)) {
-                            System.out.println("Entered");
                             ObjectMapper objectMapper = new ObjectMapper();
                             SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
 
@@ -92,7 +91,7 @@ public class HAClient extends AbstractClient {
                                 }
                             }
                             int serverId = Integer.parseInt(Crypto.decryptAES(secretKeySpec, response.getServerId()));
-                            System.out.println("Finished");
+                            System.out.println("user" + getClientId() + ": Received users report response from server" + serverId);
                             finishLatch.countDown();
                         }
                     } catch (JsonProcessingException ex) {
@@ -114,9 +113,13 @@ public class HAClient extends AbstractClient {
         finishLatch.await(5, TimeUnit.SECONDS);
 
         if (finishLatch.getCount() == 0) {
-            System.out.println("user" + getClientId() + ": Got these users");
-            for (Location location : locations.values()) {
-                System.out.println("user" + getClientId() + ": Report from user" + location.getUserId() + " ep " + location.getEp() + " coords at " + location.getLatitude() + ", " + location.getLongitude());
+            if (!locations.isEmpty()) {
+                System.out.println("user" + getClientId() + ": Got these users:");
+                for (Location location : locations.values()) {
+                    System.out.println("user" + getClientId() + ": Report from user" + location.getUserId() + " ep " + location.getEp() + " coords at " + location.getLatitude() + ", " + location.getLongitude());
+                }
+            } else {
+                System.out.println("user" + getClientId() + ": Got no users");
             }
         } else {
             obtainUsersAtLocationRegular(latitude, longitude, ep);

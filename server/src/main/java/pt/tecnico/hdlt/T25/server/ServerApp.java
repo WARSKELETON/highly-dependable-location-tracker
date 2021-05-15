@@ -30,7 +30,7 @@ public class ServerApp {
 		final int maxByzantineReplicas = Integer.parseInt(args[6]);
 
 		try {
-			new Server(serverId, numberOfUsers, step, maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas);
+			new Server(serverId, numberOfUsers, step, maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, false);
 		} catch (IOException ex) {
 			System.err.println("Server crashed due to some internal error.");
 		} catch (GeneralSecurityException ex2) {
