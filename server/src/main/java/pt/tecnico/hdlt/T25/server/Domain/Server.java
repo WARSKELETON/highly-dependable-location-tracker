@@ -806,7 +806,7 @@ public class Server {
                 .build();
     }
 
-    private void saveCurrentServerState() throws IOException {
+    private synchronized void saveCurrentServerState() throws IOException {
         ObjectMapper objectMapper = new ObjectMapper();
         ArrayNode seqArrayNode = objectMapper.createArrayNode();
         ArrayNode arrayNode = objectMapper.createArrayNode();
