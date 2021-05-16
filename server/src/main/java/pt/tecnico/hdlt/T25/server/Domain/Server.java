@@ -532,9 +532,10 @@ public class Server {
     }
 
     private boolean verifyProofOfWork(String content, String clientHash, int counter) throws GeneralSecurityException {
-        String hash = Base64.getEncoder().encodeToString(Crypto.getSHA256Hash(content + counter));
+        byte[] hashBytes = Crypto.getSHA256Hash(content + counter);
+        String hash = Base64.getEncoder().encodeToString(hashBytes);
 
-        return hash.equals(clientHash);
+        return hash.equals(clientHash) && hashBytes[0] == 0;
     }
 
     public LocationServer.SubmitLocationReportResponse submitLocationReport(LocationServer.SubmitLocationReportRequest report) throws IOException, GeneralSecurityException, DuplicateReportException, InvalidSignatureException, InvalidNumberOfProofsException, InterruptedException, InvalidProofOfWorkException {
