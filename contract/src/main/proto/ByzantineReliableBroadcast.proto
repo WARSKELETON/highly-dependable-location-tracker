@@ -14,12 +14,28 @@ message RequestMsg {
   string signature = 6;
 }
 
+message ReadyMsg {
+  string key = 1;
+  LocationMsg locationProver = 2;
+  repeated LocationProofMsg locationProofs = 3;
+  string serverIdSender = 4;
+  string serverIdReceiver = 5;
+  string signature = 6;
+}
+
 message LocationMsg {
   string content = 1;
   string signature = 2;
 }
 
+message LocationProofMsg {
+  string content = 1;
+  string witnessSignature = 2;
+  string serverId = 3;
+  string serverSignature = 4;
+}
+
 service ByzantineReliableBroadcastService {
   rpc echo(RequestMsg) returns (google.protobuf.Empty);
-  rpc ready(RequestMsg) returns (google.protobuf.Empty);
+  rpc ready(ReadyMsg) returns (google.protobuf.Empty);
 }

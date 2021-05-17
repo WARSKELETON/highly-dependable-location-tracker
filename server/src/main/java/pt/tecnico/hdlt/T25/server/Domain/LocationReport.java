@@ -13,6 +13,7 @@ public class LocationReport {
     private String locationProverSignature;
     private Map<Integer, String> locationProofsContent;
     private Map<Integer, String> locationProofsSignature;
+    private Map<Integer, Map<Integer, String>> locationProofsServerSignature;
 
     public LocationReport() {
     }
@@ -56,6 +57,14 @@ public class LocationReport {
         this.locationProofsSignature = locationProofsSignature;
     }
 
+    public Map<Integer, Map<Integer, String>> getLocationProofsServerSignature() {
+        return locationProofsServerSignature;
+    }
+
+    public void setLocationProofsServerSignature(Map<Integer, Map<Integer, String>> locationProofsServerSignature) {
+        this.locationProofsServerSignature = locationProofsServerSignature;
+    }
+
     public ObjectNode toJson() throws JsonProcessingException {
 
         ObjectMapper objectMapper = new ObjectMapper();
@@ -65,6 +74,7 @@ public class LocationReport {
         node.put("locationProverSignature", this.locationProverSignature);
         node.set("locationProofsContent", objectMapper.convertValue(locationProofsContent, JsonNode.class));
         node.set("locationProofsSignature", objectMapper.convertValue(locationProofsSignature, JsonNode.class));
+        node.set("locationProofsServerSignature", objectMapper.convertValue(locationProofsServerSignature, JsonNode.class));
 
         return node;
     }
