@@ -1,6 +1,7 @@
 package pt.tecnico.hdlt.T25.client.Domain;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.*;
 import io.grpc.stub.StreamObserver;
@@ -334,21 +335,39 @@ public class Client extends AbstractClient {
             return null;
         }
 
-        for (LocationServer.LocationMessage locationProof : response.getLocationProofsList()) {
+        for (LocationServer.RequestMyProofsContent locationProof : response.getLocationProofsList()) {
             String locationProofContent = Crypto.decryptAES(secretKeySpec, locationProof.getContent());
             LocationProof proof = objectMapper.readValue(locationProofContent, LocationProof.class);
+            int numberEqualServerSignatures = 0;
 
-            if (proof.getWitnessId() != clientId || !eps.contains(proof.getEp()) || !Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(proof.getWitnessId()))) {
+            if (proof.getWitnessId() != clientId || !eps.contains(proof.getEp()) || !Crypto.verify(locationProofContent, locationProof.getWitnessSignature(), this.getUserPublicKey(proof.getWitnessId()))) {
                 System.out.println("user" + getClientId() + ": Server" + serverId + " should not be trusted! Returned illegitimate proof! User " + clientId + " did not prove user" + proof.getUserId() + " location at " + proof.getEp() + " " + proof.getLatitude() + ", " + proof.getLongitude());
                 continue;
             }
-            locationProofs.put(new Pair<>(proof.getUserId(), proof.getEp()), proof);
+
+            TypeReference<Map<Integer, String>> typeRef = new TypeReference<>() {};
+            Map<Integer, String> serverSignatures = objectMapper.readValue(locationProof.getServerSignatures(), typeRef);
+
+            for (Integer server : serverSignatures.keySet()) {
+                if (Crypto.verify(locationProofContent + server, serverSignatures.get(server), this.getServerPublicKey(server))) {
+                    numberEqualServerSignatures++;
+                }
+            }
+
+            System.out.println(locationProofContent);
+
+            if (numberEqualServerSignatures > (getMaxByzantineReplicas() + getMaxReplicas()) / 2) {
+                System.out.println("user" + getClientId() + ": Server" + serverId + " Returned valid proof where user " + proof.getWitnessId() + " proved user" + proof.getUserId() + " location at " + proof.getEp() + " " + proof.getLatitude() + ", " + proof.getLongitude());
+                locationProofs.put(new Pair<>(proof.getUserId(), proof.getEp()), proof);
+            } else {
+                System.out.println("user" + getClientId() + ": Server" + serverId + " should not be trusted! Returned proof with insufficient server signatures!" + numberEqualServerSignatures);
+            }
         }
 
         return locationProofs;
     }
 
-    public List<LocationProof> requestMyProofsRegular(int userId, Set<Integer> eps) throws GeneralSecurityException, InterruptedException, JsonProcessingException {
+    public List<LocationProof> requestMyProofsRegular(int userId, Set<Integer> eps) throws GeneralSecurityException, InterruptedException {
         Map<Pair<Integer, Integer>, LocationProof> locationProofs = new HashMap<>();
 
         final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);

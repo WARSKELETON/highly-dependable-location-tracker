@@ -69,7 +69,7 @@ message RequestMyProofsRequest {
 
 message RequestMyProofsResponse {
   string key = 1;
-  repeated LocationMessage locationProofs = 2;
+  repeated RequestMyProofsContent locationProofs = 2;
   string serverSignature = 3;
   string seqNumber = 4;
   string serverId = 5;
@@ -78,6 +78,12 @@ message RequestMyProofsResponse {
 message LocationMessage {
   string content = 1;
   string signature = 2;
+}
+
+message RequestMyProofsContent {
+  string content = 1;
+  string witnessSignature = 2;
+  string serverSignatures = 3;
 }
 
 service LocationServerService {

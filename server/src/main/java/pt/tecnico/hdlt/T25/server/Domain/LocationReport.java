@@ -1,6 +1,7 @@
 package pt.tecnico.hdlt.T25.server.Domain;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -65,7 +66,7 @@ public class LocationReport {
         this.locationProofsServerSignature = locationProofsServerSignature;
     }
 
-    public ObjectNode toJson() throws JsonProcessingException {
+    public ObjectNode toJson() {
 
         ObjectMapper objectMapper = new ObjectMapper();
         ObjectNode node = objectMapper.createObjectNode();

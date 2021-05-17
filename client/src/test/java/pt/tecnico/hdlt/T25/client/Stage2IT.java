@@ -1,5 +1,6 @@
 package pt.tecnico.hdlt.T25.client;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import org.junit.jupiter.api.*;
 import pt.tecnico.hdlt.T25.client.Domain.ByzantineClient;
 import pt.tecnico.hdlt.T25.client.Domain.Client;
@@ -217,5 +218,32 @@ public class Stage2IT extends TestBase {
         Assertions.assertEquals(0, locationProofs.size());
 
         servers.get(0).startServer();
+    }
+
+    @Test
+    public void CorrectUserObtainsOwnProofs() throws GeneralSecurityException, InterruptedException, JsonProcessingException {
+        Client testClient = null;
+        for (Client client : clients.values()) {
+            if (client.getNearbyUsers(client.getMyLocation(0)).size() >= client.getMaxByzantineUsers() + client.getMaxNearbyByzantineUsers()) {
+                testClient = client;
+                break;
+            }
+        }
+
+        assert testClient != null;
+        System.out.println("user" + testClient.getClientId() + " building a correct report.");
+
+        boolean response = testClient.submitLocationReportAtomic(0, 10);
+        assertTrue(response);
+
+        int count = 0;
+        Set<Integer> eps = new HashSet<>();
+        eps.add(0);
+        for (Integer witnessId : testClient.getNearbyUsers(testClient.getMyLocation(0))) {
+            List<LocationProof> locationProofs = clients.get(witnessId).requestMyProofsRegular(witnessId, eps);
+            if (locationProofs.size() > 0) count++;
+        }
+
+        Assertions.assertEquals(testClient.getMaxByzantineUsers(), count);
     }
 }

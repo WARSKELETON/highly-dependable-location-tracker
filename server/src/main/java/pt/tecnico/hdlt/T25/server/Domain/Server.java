@@ -3,6 +3,7 @@ package pt.tecnico.hdlt.T25.server.Domain;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -822,8 +823,8 @@ public class Server {
         return buildRequestMyProofsResponse(proofsRequest, clientId, seqNumbers.get(clientId));
     }
 
-    private LocationServer.RequestMyProofsResponse buildRequestMyProofsResponse(ProofsRequest proofsRequest, int userId, int seqNumber) throws GeneralSecurityException {
-        List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
+    private LocationServer.RequestMyProofsResponse buildRequestMyProofsResponse(ProofsRequest proofsRequest, int userId, int seqNumber) throws GeneralSecurityException, JsonProcessingException {
+        List<LocationServer.RequestMyProofsContent> locationProofMessages = new ArrayList<>();
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
 
@@ -838,10 +839,16 @@ public class Server {
 
                 String locationProofContent = locationReport.getLocationProofsContent().get(witnessId);
 
+                Map<Integer, String> serverSignatures = locationReport.getLocationProofsServerSignature().get(userId);
+                String sig = new ObjectMapper().writeValueAsString(serverSignatures);
+
+                System.out.println("Signatures String : " + sig);
+
                 locationProofMessages.add(
-                        LocationServer.LocationMessage.newBuilder()
+                        LocationServer.RequestMyProofsContent.newBuilder()
                                 .setContent(Crypto.encryptAES(secretKeySpec, locationProofContent))
-                                .setSignature(locationReport.getLocationProofsSignature().get(witnessId))
+                                .setWitnessSignature(locationReport.getLocationProofsSignature().get(witnessId))
+                                .setServerSignatures(new ObjectMapper().writeValueAsString(serverSignatures))
                                 .build()
                 );
             }
