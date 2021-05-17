@@ -106,7 +106,7 @@ public class Stage2IT extends TestBase {
 
         Thread task = new Thread(() -> {
             try {
-                servers.put(0, new Server(0, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
+                servers.put(0, new Server(0, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true, "server0"));
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -123,7 +123,7 @@ public class Stage2IT extends TestBase {
 
         Thread newTask = new Thread(() -> {
             try {
-                servers.put(2, new Server(2, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
+                servers.put(2, new Server(2, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true, "server2"));
             } catch (Exception e) {
                 e.printStackTrace();
             }

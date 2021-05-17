@@ -28,9 +28,10 @@ public class ServerApp {
 		final int maxNearbyByzantineUsers = Integer.parseInt(args[4]);
 		final int maxReplicas = Integer.parseInt(args[5]);
 		final int maxByzantineReplicas = Integer.parseInt(args[6]);
+		final String keystorePassword = "server" + serverId;
 
 		try {
-			new Server(serverId, numberOfUsers, step, maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, false);
+			new Server(serverId, numberOfUsers, step, maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, false, keystorePassword);
 		} catch (IOException ex) {
 			System.err.println("Server crashed due to some internal error.");
 		} catch (GeneralSecurityException ex2) {

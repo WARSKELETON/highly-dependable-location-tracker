@@ -6,6 +6,7 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -28,18 +29,23 @@ public class Crypto {
         return hash;
     }
 
-    public static RSAPrivateKey getPriv(String filename) throws GeneralSecurityException {
+    public static RSAPrivateKey getPriv(String filename, String keyId, String password) throws GeneralSecurityException {
 
         try {
-            File file = new File("resources/keys/" + filename);
-            String absolutePath = file.getAbsolutePath();
-            byte[] keyBytes = Files.readAllBytes(Paths.get(absolutePath));
+            String keystorePath = "resources/keys/" + filename;
+            File keystoreFile = new File(keystorePath);
+            KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
 
-            PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(keyBytes);
-            KeyFactory kf = KeyFactory.getInstance("RSA");
-            return (RSAPrivateKey) kf.generatePrivate(spec);
+            if (keystoreFile.exists()) {
+                keyStore.load(new FileInputStream(keystoreFile), password.toCharArray());
+            } else {
+                keyStore.load(null, null);
+                keyStore.store(new FileOutputStream(keystoreFile), password.toCharArray());
+            }
+
+            return (RSAPrivateKey) keyStore.getKey(keyId, password.toCharArray());
         } catch (IOException e) {
-            System.out.println("Failed to get private key.");
+            e.printStackTrace();
             return null;
         }
     }

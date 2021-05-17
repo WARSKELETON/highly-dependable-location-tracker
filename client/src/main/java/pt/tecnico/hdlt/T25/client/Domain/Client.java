@@ -35,13 +35,13 @@ public class Client extends AbstractClient {
     private Map<Integer, ProximityServiceGrpc.ProximityServiceStub> proximityServiceStubs;
     private Map<Integer, LocationReport> locationReports;
 
-    public Client(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxByzantineUsers, int maxNearbyByzantineUsers, boolean isTest, int maxReplicas, int maxByzantineReplicas) throws IOException, GeneralSecurityException, InterruptedException {
+    public Client(String serverHost, int serverPort, int clientId, SystemInfo systemInfo, int maxByzantineUsers, int maxNearbyByzantineUsers, boolean isTest, int maxReplicas, int maxByzantineReplicas, String keystorePassword) throws IOException, GeneralSecurityException, InterruptedException {
         super(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxReplicas, maxByzantineReplicas);
         this.maxNearbyByzantineUsers = maxNearbyByzantineUsers;
         this.locationReports = new HashMap<>();
         this.proximityServiceStubs = new HashMap<>();
         this.connectToClients();
-        this.setPrivateKey(getPriv("client" + clientId + "-priv.key"));
+        this.setPrivateKey(getPriv("client" + clientId + ".jks", "client" + clientId, keystorePassword));
         checkLatestSeqNumberRegular();
         if (!isTest) this.eventLoop();
     }

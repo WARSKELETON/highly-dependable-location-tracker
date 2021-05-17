@@ -8,6 +8,7 @@ import pt.tecnico.hdlt.T25.client.Domain.ByzantineClient;
 import pt.tecnico.hdlt.T25.client.Domain.Client;
 import pt.tecnico.hdlt.T25.client.Domain.HAClient;
 import pt.tecnico.hdlt.T25.client.Domain.SystemInfo;
+import pt.tecnico.hdlt.T25.crypto.RSAKeyGenerator;
 import pt.tecnico.hdlt.T25.server.Domain.ByzantineServer;
 import pt.tecnico.hdlt.T25.server.Domain.Server;
 
@@ -61,6 +62,17 @@ public class TestBase {
             maxReplicas = Integer.parseInt(testProps.getProperty("server.maxReplicas"));
             maxByzantineReplicas = Integer.parseInt(testProps.getProperty("server.maxByzantineReplicas"));
 
+            /*
+            // Generate private keys and public keys
+            for (int i = 0; i < maxReplicas; i++)
+                RSAKeyGenerator.write("server" + i + ".jks", "server" + i + "-pub.key", "server" + i, "server" + i);
+
+            RSAKeyGenerator.write("ha.jks", "ha-pub.key", "ha", "ha");
+
+            for (int i = 0; i < maxReplicas; i++)
+                RSAKeyGenerator.write("client" + i + ".jks", "client" + i + "-pub.key", "client" + i, "client" + i);
+            */
+
             servers = new HashMap<>();
             byzantineServers = new HashMap<>();
             Thread task = new Thread(() -> {
@@ -68,9 +80,9 @@ public class TestBase {
                     for (int i = 0; i < maxReplicas; i++) {
                         System.out.println("Starting server with id " + i);
                         if (i != 3) {
-                            servers.put(i, new Server(i, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
+                            servers.put(i, new Server(i, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true, "server" + i));
                         } else {
-                            byzantineServers.put(i, new ByzantineServer(i, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
+                            byzantineServers.put(i, new ByzantineServer(i, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true, "server" + i));
                         }
                     }
                 } catch (Exception e) {
@@ -82,12 +94,12 @@ public class TestBase {
 
             clients = new HashMap<>();
             byzantineClients = new HashMap<>();
-            haClient = new HAClient(serverHost, serverPort, -1, systemInfo, true, maxByzantineUsers, maxReplicas, maxByzantineReplicas);
+            haClient = new HAClient(serverHost, serverPort, -1, systemInfo, true, maxByzantineUsers, maxReplicas, maxByzantineReplicas, "ha");
             for (int i = 0; i < systemInfo.getNumberOfUsers(); i++) {
                 if (byzantineIds.contains(i)) {
-                    byzantineClients.put(i, new ByzantineClient(serverHost, serverPort, i, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, ByzantineClient.Flavor.SILENT, true, maxReplicas, maxByzantineReplicas));
+                    byzantineClients.put(i, new ByzantineClient(serverHost, serverPort, i, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, ByzantineClient.Flavor.SILENT, true, maxReplicas, maxByzantineReplicas, "client" + i));
                 } else {
-                    clients.put(i, new Client(serverHost, serverPort, i, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, true, maxReplicas, maxByzantineReplicas));
+                    clients.put(i, new Client(serverHost, serverPort, i, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, true, maxReplicas, maxByzantineReplicas, "client" + i));
                 }
             }
         }
