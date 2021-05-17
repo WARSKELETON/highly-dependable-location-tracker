@@ -238,8 +238,13 @@ public class Client extends AbstractClient {
                 .build();
     }
 
-    public void submitLocationReportAtomic(int ep) throws InterruptedException, GeneralSecurityException {
+    public boolean submitLocationReportAtomic(int ep, int maxRequests) throws InterruptedException, GeneralSecurityException {
         final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
+
+        if (maxRequests == -1) {
+            System.out.println("user" + getClientId() + ": Giving up trying to submit report!");
+            return false;
+        }
 
         Consumer<LocationServer.SubmitLocationReportResponse> requestOnSuccessObserver = new Consumer<>() {
             @Override
@@ -290,9 +295,10 @@ public class Client extends AbstractClient {
 
         if (finishLatch.getCount() == 0) {
             System.out.println("user" + getClientId() + ": Finished submission!");
+            return true;
         } else {
             System.out.println("user" + getClientId() + ": Retrying submit report!");
-            submitLocationReportAtomic(ep);
+            return submitLocationReportAtomic(ep, --maxRequests);
         }
     }
 
@@ -441,7 +447,7 @@ public class Client extends AbstractClient {
                 }
                 case SUBMIT_LOCATION_REPORT: {
                     int ep = Integer.parseInt(args[1]);
-                    submitLocationReportAtomic(ep);
+                    submitLocationReportAtomic(ep, 10);
                     break;
                 }
                 case OBTAIN_LOCATION_REPORT: {

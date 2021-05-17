@@ -355,7 +355,12 @@ public class ByzantineClient extends Client {
     }
 
     @Override
-    public void submitLocationReportAtomic(int ep) throws InterruptedException, GeneralSecurityException {
+    public boolean submitLocationReportAtomic(int ep, int maxRequests) throws InterruptedException, GeneralSecurityException {
+        if (maxRequests == -1) {
+            System.out.println("user" + getClientId() + ": Giving up trying to submit report!");
+            return false;
+        }
+
         final CountDownLatch finishLatch = new CountDownLatch(getMaxByzantineReplicas());
 
         Consumer<LocationServer.SubmitLocationReportResponse> requestOnSuccessObserver = new Consumer<>() {
@@ -407,9 +412,10 @@ public class ByzantineClient extends Client {
 
         if (finishLatch.getCount() == 0) {
             System.out.println("user" + getClientId() + ": Finished byzantine submission!");
+            return true;
         } else {
             System.out.println("user" + getClientId() + ": Retrying byzantine submit report!");
-            submitLocationReportAtomic(ep);
+            return submitLocationReportAtomic(ep, --maxRequests);
         }
     }
 
@@ -504,7 +510,7 @@ public class ByzantineClient extends Client {
                 }
                 case SUBMIT_LOCATION_REPORT: {
                     int ep = Integer.parseInt(args[1]);
-                    submitLocationReportAtomic(ep);
+                    submitLocationReportAtomic(ep, 10);
                     break;
                 }
                 case OBTAIN_LOCATION_REPORT: {

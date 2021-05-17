@@ -12,7 +12,6 @@ import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.*;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class Stage2IT extends TestBase {
@@ -67,7 +66,8 @@ public class Stage2IT extends TestBase {
         System.out.println("byzantineUser" + byzantineClient.getClientId() + " building a fake report for spoofed location: " + spoofedLocation.getLatitude() + ", " + spoofedLocation.getLongitude());
 
         byzantineClient.createLocationReport(byzantineClient.getClientId(), 0, spoofedLocation.getLatitude(), spoofedLocation.getLongitude());
-        byzantineClient.submitLocationReportAtomic(0);
+        boolean response = byzantineClient.submitLocationReportAtomic(0, 10);
+        assertTrue(response);
 
         Location locationResponse = byzantineClient.obtainLocationReportAtomic(byzantineClient.getClientId(), 0);
 
@@ -100,7 +100,8 @@ public class Stage2IT extends TestBase {
 
         servers.get(0).shutdownServer();
         System.out.println("Submitting report without server0");
-        testClient.submitLocationReportAtomic(0);
+        boolean response = testClient.submitLocationReportAtomic(0, 10);
+        assertTrue(response);
         servers.get(2).shutdownServer();
 
         Thread task = new Thread(() -> {
@@ -132,7 +133,6 @@ public class Stage2IT extends TestBase {
     }
 
     @Test
-    @Timeout(value = 20, unit = SECONDS)
     public void ByzantineClientFakeReportInByzantineServerFailingBRB() throws InterruptedException, GeneralSecurityException {
         ByzantineClient byzantineClient = byzantineClients.get(new ArrayList<>(byzantineClients.keySet()).get(new Random().nextInt(byzantineClients.keySet().size())));
         for (ByzantineClient bc : byzantineClients.values()) {
@@ -158,7 +158,8 @@ public class Stage2IT extends TestBase {
 
         byzantineClient.createLocationReport(byzantineClient.getClientId(), 0, spoofedLocation.getLatitude(), spoofedLocation.getLongitude());
 
-        byzantineClient.submitLocationReportAtomic(0);
+        boolean response = byzantineClient.submitLocationReportAtomic(0, 1);
+        assertFalse(response);
     }
 
     @Test
@@ -195,7 +196,8 @@ public class Stage2IT extends TestBase {
 
         byzantineClient.createLocationReport(byzantineClient.getClientId(), 0, spoofedLocation.getLatitude(), spoofedLocation.getLongitude());
 
-        byzantineClient.submitLocationReportAtomic(0);
+        boolean response = byzantineClient.submitLocationReportAtomic(0, 10);
+        assertTrue(response);
 
         Location locationResponse = byzantineClient.obtainLocationReportAtomic(byzantineClient.getClientId(), 0);
 
