@@ -63,7 +63,8 @@ public class SystemIT extends TestBase {
         System.out.println("user" + testClient.getClientId() + " building a correct report.");
         Location originalLocation = testClient.getMyLocation(0);
 
-        testClient.submitLocationReportAtomic(0);
+        boolean response = testClient.submitLocationReportAtomic(0, 10);
+        assertTrue(response);
 
         Location locationResponse = testClient.obtainLocationReportAtomic(testClient.getClientId(), 0);
         Assertions.assertEquals(originalLocation.getUserId(), locationResponse.getUserId());
@@ -93,7 +94,9 @@ public class SystemIT extends TestBase {
         System.out.println("user" + testClient.getClientId() + " building a correct report.");
         Location originalLocation = testClient.getMyLocation(0);
 
-        testClient.submitLocationReportAtomic(0);
+        boolean response = testClient.submitLocationReportAtomic(0, 10);
+        assertTrue(response);
+
         Location locationResponse = testClient.obtainLocationReportAtomic(testClient.getClientId(), 0);
         Assertions.assertEquals(originalLocation.getUserId(), locationResponse.getUserId());
         Assertions.assertEquals(originalLocation.getEp(), locationResponse.getEp());
@@ -134,7 +137,8 @@ public class SystemIT extends TestBase {
             System.out.println("user" + testClient.getClientId() + " building a correct report at epoch " + ep);
             Location originalLocation = testClient.getMyLocation(ep);
 
-            testClient.submitLocationReportAtomic(ep);
+            boolean response = testClient.submitLocationReportAtomic(ep, 10);
+            assertTrue(response);
 
             Location locationResponse = testClient.obtainLocationReportAtomic(testClient.getClientId(), ep);
             Assertions.assertEquals(originalLocation.getUserId(), locationResponse.getUserId());
@@ -155,7 +159,7 @@ public class SystemIT extends TestBase {
             int ep = testClients.get(testClient);
             System.out.println("user" + testClient.getClientId() + " replaying report at epoch " + ep);
             Assertions.assertEquals(Status.Code.ALREADY_EXISTS,
-                    assertThrows(StatusRuntimeException.class, () -> testClient.submitLocationReportAtomic(ep)).getStatus().getCode());
+                    assertThrows(StatusRuntimeException.class, () -> testClient.submitLocationReportAtomic(ep, 10)).getStatus().getCode());
         }
     }
 
@@ -168,7 +172,8 @@ public class SystemIT extends TestBase {
                     System.out.println("user" + client.getClientId() + " building a correct report at epoch " + ep);
                     Location originalLocation = client.getMyLocation(ep);
 
-                    client.submitLocationReportAtomic(ep);
+                    boolean response = client.submitLocationReportAtomic(ep, 10);
+                    assertTrue(response);
 
                     Location locationResponse = client.obtainLocationReportAtomic(client.getClientId(), ep);
                     Assertions.assertEquals(originalLocation.getUserId(), locationResponse.getUserId());
@@ -211,7 +216,8 @@ public class SystemIT extends TestBase {
 
         byzantineClient.createLocationReport(byzantineClient.getClientId(), 0, spoofedLocation.getLatitude(), spoofedLocation.getLongitude());
 
-        byzantineClient.submitLocationReportAtomic(0);
+        boolean response = byzantineClient.submitLocationReportAtomic(0, 1);
+        assertFalse(response);
 
         byzantineClient.obtainLocationReportAtomic(byzantineClient.getClientId(), 0);
     }
@@ -236,7 +242,7 @@ public class SystemIT extends TestBase {
                 byzantineClient.createLocationReport(victimClient.getClientId(), 0, victimLocation.getLatitude(), victimLocation.getLongitude());
 
                 Assertions.assertEquals(Status.Code.UNAUTHENTICATED,
-                        assertThrows(StatusRuntimeException.class, () -> byzantineClient.submitLocationReportAtomic(0)).getStatus().getCode());
+                        assertThrows(StatusRuntimeException.class, () -> byzantineClient.submitLocationReportAtomic(0, 10)).getStatus().getCode());
             }
         }
     }
@@ -272,7 +278,7 @@ public class SystemIT extends TestBase {
         System.out.println("user" + testClient.getClientId() + " building a correct report with byzantineUser" + testByzantineClient.getClientId() + " generating a proof on behalf of a correct user.");
 
         Client finalTestClient = testClient;
-        Assertions.assertDoesNotThrow(() -> finalTestClient.submitLocationReportAtomic(0));
+        Assertions.assertDoesNotThrow(() -> finalTestClient.submitLocationReportAtomic(0, 10));
 
         Location locationResponse = testClient.obtainLocationReportAtomic(testClient.getClientId(), 0);
         Assertions.assertEquals(originalLocation.getUserId(), locationResponse.getUserId());
@@ -296,7 +302,8 @@ public class SystemIT extends TestBase {
         assert testClient != null;
         int testClientId = testClient.getClientId();
         System.out.println("user" + testClient.getClientId() + " building a correct report.");
-        testClient.submitLocationReportAtomic(0);
+        boolean response = testClient.submitLocationReportAtomic(0, 10);
+        assertTrue(response);
 
         System.out.println("byzantineUser" + byzantineClient.getClientId() + " tries to obtain location from user" + testClient.getClientId());
 
@@ -318,7 +325,9 @@ public class SystemIT extends TestBase {
 
         assert testClient != null;
         System.out.println("user" + testClient.getClientId() + " building a correct report.");
-        testClient.submitLocationReportAtomic(0);
+        boolean response = testClient.submitLocationReportAtomic(0, 10);
+        assertTrue(response);
+
         Location location = testClient.getMyLocation(0);
 
         System.out.println("byzantineUser" + byzantineClient.getClientId() + " tries to obtain users at location " + location.getLatitude() + ", " + location.getLongitude());
@@ -341,10 +350,12 @@ public class SystemIT extends TestBase {
         assert testClient != null;
         System.out.println("user" + testClient.getClientId() + " submitting multiple correct reports from the same epoch.");
 
-        testClient.submitLocationReportAtomic(0);
+        boolean response = testClient.submitLocationReportAtomic(0, 10);
+        assertTrue(response);
+
         Client finalTestClient = testClient;
         Assertions.assertEquals(Status.Code.ALREADY_EXISTS,
-                assertThrows(StatusRuntimeException.class, () -> finalTestClient.submitLocationReportAtomic(0)).getStatus().getCode());
+                assertThrows(StatusRuntimeException.class, () -> finalTestClient.submitLocationReportAtomic(0, 10)).getStatus().getCode());
     }
 
     /*@Test
@@ -365,7 +376,8 @@ public class SystemIT extends TestBase {
         Client finalTestClient = testClient;
         Thread task = new Thread(()  -> {
             try {
-                finalTestClient.submitLocationReportAtomic(0);
+                boolean response = finalTestClient.submitLocationReportAtomic(0, 10);
+                assertTrue(response);
             } catch (GeneralSecurityException | InterruptedException e) {
                 e.printStackTrace();
             }
@@ -396,7 +408,8 @@ public class SystemIT extends TestBase {
         System.out.println("user" + testClient.getClientId() + " building a correct report.");
         Location originalLocation = testClient.getMyLocation(0);
 
-        testClient.submitLocationReportAtomic(0);
+        boolean response = testClient.submitLocationReportAtomic(0, 10);
+        assertTrue(response);
         server.shutdownServer();
 
         Client finalTestClient = testClient;
