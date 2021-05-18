@@ -63,25 +63,18 @@ public class TestBase {
 
             servers = new HashMap<>();
             byzantineServers = new HashMap<>();
-            Thread task = new Thread(() -> {
-                try {
-                    for (int i = 0; i < maxReplicas; i++) {
-                        System.out.println("Starting server with id " + i);
-                        if (i != 3) {
-                            servers.put(i, new Server(i, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
-                        } else {
-                            byzantineServers.put(i, new ByzantineServer(i, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
-                        }
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            });
-
-            task.start();
-
             clients = new HashMap<>();
             byzantineClients = new HashMap<>();
+
+            for (int i = 0; i < maxReplicas; i++) {
+                System.out.println("Starting server with id " + i);
+                if (i != 3) {
+                    servers.put(i, new Server(i, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
+                } else {
+                    byzantineServers.put(i, new ByzantineServer(i, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
+                }
+            }
+
             haClient = new HAClient(serverHost, serverPort, -1, systemInfo, true, maxByzantineUsers, maxReplicas, maxByzantineReplicas);
             for (int i = 0; i < systemInfo.getNumberOfUsers(); i++) {
                 if (byzantineIds.contains(i)) {

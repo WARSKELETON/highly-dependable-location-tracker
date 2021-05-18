@@ -39,7 +39,7 @@ message ObtainLocationReportRequest {
 message ObtainLocationReportResponse {
   string key = 1;
   LocationMessage locationProver = 2;
-  repeated LocationMessage locationProofs = 3;
+  repeated ProofsContent locationProofs = 3;
   string serverSignature = 4;
   string seqNumber = 5;
   string serverId = 6;
@@ -69,7 +69,7 @@ message RequestMyProofsRequest {
 
 message RequestMyProofsResponse {
   string key = 1;
-  repeated RequestMyProofsContent locationProofs = 2;
+  repeated ProofsContent locationProofs = 2;
   string serverSignature = 3;
   string seqNumber = 4;
   string serverId = 5;
@@ -80,7 +80,7 @@ message LocationMessage {
   string signature = 2;
 }
 
-message RequestMyProofsContent {
+message ProofsContent {
   string content = 1;
   string witnessSignature = 2;
   string serverSignatures = 3;

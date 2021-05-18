@@ -1,12 +1,14 @@
 package pt.tecnico.hdlt.T25.client.Domain;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
+import org.javatuples.Pair;
 import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.LocationServerServiceGrpc;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
@@ -151,9 +153,29 @@ abstract class AbstractClient {
                 proof.getLongitude() == locationProver.getLongitude();
     }
 
+    boolean verifyProofContainsBQ(LocationProof proof, String locationProofContent, Map<Integer, String> serverSignatures, int serverId) {
+        int numberEqualServerSignatures = 0;
+
+        for (Integer server : serverSignatures.keySet()) {
+            if (Crypto.verify(locationProofContent + server, serverSignatures.get(server), this.getServerPublicKey(server))) {
+                numberEqualServerSignatures++;
+            }
+        }
+
+        // Each proof in the report must contain a byzantine quorum of server signatures
+        if (numberEqualServerSignatures > (getMaxByzantineReplicas() + getMaxReplicas()) / 2) {
+            System.out.println("user" + getClientId() + ": Server" + serverId + " Returned valid proof where user " + proof.getWitnessId() + " proved user" + proof.getUserId() + " location at " + proof.getEp() + " " + proof.getLatitude() + ", " + proof.getLongitude());
+            return true;
+        } else {
+            System.out.println("user" + getClientId() + ": Server" + serverId + " should not be trusted! Returned proof with insufficient server signatures!" + numberEqualServerSignatures);
+            return false;
+        }
+    }
+
     boolean verifyLocationReport(int userId, int ep, LocationServer.ObtainLocationReportResponse response) throws JsonProcessingException, GeneralSecurityException {
         List<Integer> witnessIds = new ArrayList<>();
         ObjectMapper objectMapper = new ObjectMapper();
+        TypeReference<Map<Integer, String>> typeRef = new TypeReference<>() {};
 
         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), this.privateKey);
         if (secretKeySpec == null || response.getLocationProver() == null) return false;
@@ -175,19 +197,23 @@ abstract class AbstractClient {
             return false;
         }
 
-        for (LocationServer.LocationMessage locationProof : response.getLocationProofsList()) {
+        for (LocationServer.ProofsContent locationProof : response.getLocationProofsList()) {
             String locationProofContent = Crypto.decryptAES(secretKeySpec, locationProof.getContent());
             LocationProof proof = objectMapper.readValue(locationProofContent, LocationProof.class);
             int witnessId = proof.getWitnessId();
             locationProofsContent.add(locationProofContent);
 
             // A single illegitimate proof found in the report should invalidate the whole report
-            if (!witnessIds.contains(witnessId) && witnessId != locationProver.getUserId() && !(this.verifyLocationProof(proof, locationProver) && Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(proof.getWitnessId())))) {
+            if (!witnessIds.contains(witnessId) && witnessId != locationProver.getUserId() && !(this.verifyLocationProof(proof, locationProver) && Crypto.verify(locationProofContent, locationProof.getWitnessSignature(), this.getUserPublicKey(proof.getWitnessId())))) {
                 System.out.println("user" + getClientId() + ": Server should not be trusted! Generated illegitimate report for " + locationProver.getUserId() + " at " + locationProver.getEp() + " " + locationProver.getLatitude() + ", " + locationProver.getLongitude());
                 return false;
             } else {
                 witnessIds.add(witnessId);
             }
+
+            Map<Integer, String> serverSignatures = objectMapper.readValue(locationProof.getServerSignatures(), typeRef);
+
+            if (!verifyProofContainsBQ(proof, locationProofContent, serverSignatures, serverId)) return false;
         }
 
         if (witnessIds.size() < maxByzantineUsers) {
@@ -325,7 +351,7 @@ abstract class AbstractClient {
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
 
-        for (LocationServer.LocationMessage locationProof : response.getLocationProofsList()) {
+        for (LocationServer.ProofsContent locationProof : response.getLocationProofsList()) {
             String locationProofContent = Crypto.decryptAES(receivedSecretKeySpec, locationProof.getContent());
             LocationProof proof = objectMapper.readValue(locationProofContent, LocationProof.class);
             int witnessId = proof.getWitnessId();
@@ -334,7 +360,7 @@ abstract class AbstractClient {
             locationProofMessages.add(
                     LocationServer.LocationMessage.newBuilder()
                             .setContent(Crypto.encryptAES(secretKeySpec, locationProofContent))
-                            .setSignature(locationProof.getSignature())
+                            .setSignature(locationProof.getWitnessSignature())
                             .build()
             );
         }
@@ -465,16 +491,8 @@ abstract class AbstractClient {
 
                     try {
                         if (response != null && verifyLocationReport(userId, ep, response)) {
-                            ObjectMapper objectMapper = new ObjectMapper();
-                            SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
-                            int serverId = Integer.parseInt(Crypto.decryptAES(secretKeySpec, response.getServerId()));
-                            String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getLocationProver().getContent());
-                            Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
-
                             reportResponses.add(response);
-                            while (finishLatch.getCount() > 0) {
-                                finishLatch.countDown();
-                            }
+                            finishLatch.countDown();
                         }
                     } catch (JsonProcessingException | GeneralSecurityException ex) {
                         System.err.println("user" + getClientId() + ": caught processing exception while obtaining report");
@@ -499,14 +517,18 @@ abstract class AbstractClient {
 
         for (int serverId : locationServerServiceStubs.keySet()) {
             LocationServer.ObtainLocationReportRequest request = this.buildObtainLocationReportRequest(userId, ep, this.seqNumbers.get(serverId), serverId);
-            obtainLocationReport(locationServerServiceStubs.get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver);
-            seqNumbers.put(serverId, seqNumbers.get(serverId) + 1);
+            obtainLocationReport(locationServerServiceStubs.get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver, serverId);
         }
 
         finishLatch.await(5, TimeUnit.SECONDS);
 
         if (finishLatch.getCount() == 0 && !reportResponses.isEmpty()) {
-            writeBackLocationReport(reportResponses.get(0));
+            if (reportResponses.size() <= (getMaxReplicas() + getMaxByzantineReplicas()) / 2) {
+                System.out.println("user" + getClientId() + ": Caught less than a BQ of the same report... Writing back");
+                writeBackLocationReport(reportResponses.get(0));
+            } else {
+                System.out.println("user" + getClientId() + ": Caught BQ of the same report... No need to write back");
+            }
         } else {
             if (finishLatch.getCount() == 0 && reportResponses.isEmpty()) {
                 return null;
@@ -518,16 +540,18 @@ abstract class AbstractClient {
         return obtainLocationFromReportResponse(reportResponses.get(0));
     }
 
-    public void obtainLocationReport(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.ObtainLocationReportRequest request, Consumer<LocationServer.ObtainLocationReportResponse> callbackOnSuccess, Consumer<Throwable> callbackOnError) {
+    public void obtainLocationReport(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.ObtainLocationReportRequest request, Consumer<LocationServer.ObtainLocationReportResponse> callbackOnSuccess, Consumer<Throwable> callbackOnError, int serverId) {
         try {
             locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).obtainLocationReport(request, new StreamObserver<>() {
                 @Override
                 public void onNext(LocationServer.ObtainLocationReportResponse response) {
+                    seqNumbers.put(serverId, seqNumbers.get(serverId) + 1);
                     callbackOnSuccess.accept(response);
                 }
 
                 @Override
                 public void onError(Throwable t) {
+                    seqNumbers.put(serverId, seqNumbers.get(serverId) + 1);
                     callbackOnError.accept(t);
                 }
 
@@ -615,6 +639,6 @@ abstract class AbstractClient {
     }
 
     public void cleanSeqNumbers() {
-        //seqNumbers.clear();
+        initializeSeqNumbers();
     }
 }

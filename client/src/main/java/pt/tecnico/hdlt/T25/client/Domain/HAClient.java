@@ -106,8 +106,7 @@ public class HAClient extends AbstractClient {
         for (int serverId : getLocationServerServiceStubs().keySet()) {
             System.out.println("Sending request to server" + serverId);
             LocationServer.ObtainUsersAtLocationRequest request = buildObtainUsersAtLocationRequest(latitude, longitude, ep, this.getSeqNumbers().get(serverId), serverId);
-            obtainUsersAtLocation(getLocationServerServiceStubs().get(serverId), request, requestObserver);
-            getSeqNumbers().put(serverId, getSeqNumbers().get(serverId) + 1);
+            obtainUsersAtLocation(getLocationServerServiceStubs().get(serverId), request, requestObserver, serverId);
         }
 
         finishLatch.await(5, TimeUnit.SECONDS);
@@ -128,16 +127,18 @@ public class HAClient extends AbstractClient {
         return new ArrayList<>(locations.values());
     }
 
-    public void obtainUsersAtLocation(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.ObtainUsersAtLocationRequest request, Consumer<LocationServer.ObtainUsersAtLocationResponse> callback) {
+    public void obtainUsersAtLocation(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.ObtainUsersAtLocationRequest request, Consumer<LocationServer.ObtainUsersAtLocationResponse> callback, int serverId) {
         try {
             locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).obtainUsersAtLocation(request, new StreamObserver<>() {
                 @Override
                 public void onNext(LocationServer.ObtainUsersAtLocationResponse response) {
                     callback.accept(response);
+                    getSeqNumbers().put(serverId, getSeqNumbers().get(serverId) + 1);
                 }
 
                 @Override
                 public void onError(Throwable t) {
+                    getSeqNumbers().put(serverId, getSeqNumbers().get(serverId) + 1);
                 }
 
                 @Override

@@ -202,7 +202,6 @@ public class Client extends AbstractClient {
         Location myLocation = this.getMyLocation(ep);
 
         if (locationReport == null) {
-            // TODO returning null
             if (!createLocationReport(getClientId(), ep, myLocation.getLatitude(), myLocation.getLongitude())) return null;
             locationReport = locationReports.get(ep);
         }
@@ -322,6 +321,7 @@ public class Client extends AbstractClient {
     private Map<Pair<Integer, Integer>, LocationProof> verifyMyProofsResponse(int clientId, Set<Integer> eps, LocationServer.RequestMyProofsResponse response) throws GeneralSecurityException, JsonProcessingException {
         Map<Pair<Integer, Integer>, LocationProof> locationProofs = new HashMap<>();
         ObjectMapper objectMapper = new ObjectMapper();
+        TypeReference<Map<Integer, String>> typeRef = new TypeReference<>() {};
 
         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), this.getPrivateKey());
         if (secretKeySpec == null) return null;
@@ -335,33 +335,20 @@ public class Client extends AbstractClient {
             return null;
         }
 
-        for (LocationServer.RequestMyProofsContent locationProof : response.getLocationProofsList()) {
+        for (LocationServer.ProofsContent locationProof : response.getLocationProofsList()) {
             String locationProofContent = Crypto.decryptAES(secretKeySpec, locationProof.getContent());
             LocationProof proof = objectMapper.readValue(locationProofContent, LocationProof.class);
-            int numberEqualServerSignatures = 0;
 
             if (proof.getWitnessId() != clientId || !eps.contains(proof.getEp()) || !Crypto.verify(locationProofContent, locationProof.getWitnessSignature(), this.getUserPublicKey(proof.getWitnessId()))) {
                 System.out.println("user" + getClientId() + ": Server" + serverId + " should not be trusted! Returned illegitimate proof! User " + clientId + " did not prove user" + proof.getUserId() + " location at " + proof.getEp() + " " + proof.getLatitude() + ", " + proof.getLongitude());
                 continue;
             }
 
-            TypeReference<Map<Integer, String>> typeRef = new TypeReference<>() {};
             Map<Integer, String> serverSignatures = objectMapper.readValue(locationProof.getServerSignatures(), typeRef);
-
-            for (Integer server : serverSignatures.keySet()) {
-                if (Crypto.verify(locationProofContent + server, serverSignatures.get(server), this.getServerPublicKey(server))) {
-                    numberEqualServerSignatures++;
-                }
-            }
 
             System.out.println(locationProofContent);
 
-            if (numberEqualServerSignatures > (getMaxByzantineReplicas() + getMaxReplicas()) / 2) {
-                System.out.println("user" + getClientId() + ": Server" + serverId + " Returned valid proof where user " + proof.getWitnessId() + " proved user" + proof.getUserId() + " location at " + proof.getEp() + " " + proof.getLatitude() + ", " + proof.getLongitude());
-                locationProofs.put(new Pair<>(proof.getUserId(), proof.getEp()), proof);
-            } else {
-                System.out.println("user" + getClientId() + ": Server" + serverId + " should not be trusted! Returned proof with insufficient server signatures!" + numberEqualServerSignatures);
-            }
+            if (verifyProofContainsBQ(proof, locationProofContent, serverSignatures, serverId)) locationProofs.put(new Pair<>(proof.getUserId(), proof.getEp()), proof);
         }
 
         return locationProofs;
@@ -393,8 +380,7 @@ public class Client extends AbstractClient {
 
         for (int serverId : getLocationServerServiceStubs().keySet()) {
             LocationServer.RequestMyProofsRequest request = buildRequestMyProofsRequest(userId, eps, this.getSeqNumbers().get(serverId), serverId);
-            requestMyProofs(getLocationServerServiceStubs().get(serverId), request, requestObserver);
-            getSeqNumbers().put(serverId, getSeqNumbers().get(serverId) + 1);
+            requestMyProofs(getLocationServerServiceStubs().get(serverId), request, requestObserver, serverId);
         }
 
         finishLatch.await(10, TimeUnit.SECONDS);
@@ -416,16 +402,18 @@ public class Client extends AbstractClient {
         }
     }
 
-    private void requestMyProofs(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.RequestMyProofsRequest request, Consumer<LocationServer.RequestMyProofsResponse> callback) throws GeneralSecurityException {
+    private void requestMyProofs(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.RequestMyProofsRequest request, Consumer<LocationServer.RequestMyProofsResponse> callback, int serverId) throws GeneralSecurityException {
         try {
             locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).requestMyProofs(request, new StreamObserver<>() {
                 @Override
                 public void onNext(LocationServer.RequestMyProofsResponse response) {
+                    getSeqNumbers().put(serverId, getSeqNumbers().get(serverId) + 1);
                     callback.accept(response);
                 }
 
                 @Override
                 public void onError(Throwable t) {
+                    getSeqNumbers().put(serverId, getSeqNumbers().get(serverId) + 1);
                 }
 
                 @Override

@@ -695,7 +695,7 @@ public class Server {
         int expectedSeqNumber = seqNumbers.get(sourceClientId);
 
         if (receivedSeqNumber != expectedSeqNumber) {
-            System.out.println("Server" + this.id + ": Sequence numbers do not match! " + locationRequest.getUserId() + " location at epoch " + locationRequest.getEp());
+            System.out.println("Server" + this.id + ": Sequence numbers do not match! Received " + receivedSeqNumber + " however expected " + expectedSeqNumber);
             throw new StaleException(sourceClientId, receivedSeqNumber, expectedSeqNumber);
         }
         seqNumbers.put(sourceClientId, expectedSeqNumber + 1);
@@ -721,16 +721,18 @@ public class Server {
         return this.buildLocationReportResponse(locationReport, sourceClientId, seqNumbers.get(sourceClientId), newSecretKeySpec, encodedKey);
     }
 
-    private LocationServer.ObtainLocationReportResponse buildLocationReportResponse(LocationReport report, int userId, int seqNumber, SecretKeySpec secretKeySpec, byte[] encodedKey) throws GeneralSecurityException {
-        List<LocationServer.LocationMessage> locationProofMessages = new ArrayList<>();
+    private LocationServer.ObtainLocationReportResponse buildLocationReportResponse(LocationReport report, int userId, int seqNumber, SecretKeySpec secretKeySpec, byte[] encodedKey) throws GeneralSecurityException, JsonProcessingException {
+        List<LocationServer.ProofsContent> locationProofMessages = new ArrayList<>();
 
         for (Integer witnessId : report.getLocationProofsContent().keySet()) {
             String locationProofContent = report.getLocationProofsContent().get(witnessId);
+            Map<Integer, String> serverSignatures = report.getLocationProofsServerSignature().get(witnessId);
 
             locationProofMessages.add(
-                    LocationServer.LocationMessage.newBuilder()
+                    LocationServer.ProofsContent.newBuilder()
                             .setContent(Crypto.encryptAES(secretKeySpec, locationProofContent))
-                            .setSignature(report.getLocationProofsSignature().get(witnessId))
+                            .setWitnessSignature(report.getLocationProofsSignature().get(witnessId))
+                            .setServerSignatures(new ObjectMapper().writeValueAsString(serverSignatures))
                             .build()
             );
         }
@@ -824,7 +826,7 @@ public class Server {
     }
 
     private LocationServer.RequestMyProofsResponse buildRequestMyProofsResponse(ProofsRequest proofsRequest, int userId, int seqNumber) throws GeneralSecurityException, JsonProcessingException {
-        List<LocationServer.RequestMyProofsContent> locationProofMessages = new ArrayList<>();
+        List<LocationServer.ProofsContent> locationProofMessages = new ArrayList<>();
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
 
@@ -840,12 +842,9 @@ public class Server {
                 String locationProofContent = locationReport.getLocationProofsContent().get(witnessId);
 
                 Map<Integer, String> serverSignatures = locationReport.getLocationProofsServerSignature().get(userId);
-                String sig = new ObjectMapper().writeValueAsString(serverSignatures);
-
-                System.out.println("Signatures String : " + sig);
 
                 locationProofMessages.add(
-                        LocationServer.RequestMyProofsContent.newBuilder()
+                        LocationServer.ProofsContent.newBuilder()
                                 .setContent(Crypto.encryptAES(secretKeySpec, locationProofContent))
                                 .setWitnessSignature(locationReport.getLocationProofsSignature().get(witnessId))
                                 .setServerSignatures(new ObjectMapper().writeValueAsString(serverSignatures))
@@ -920,5 +919,7 @@ public class Server {
         new File(BACKUP_RECOVERY_FILE_PATH).delete();
 
         locationReports = new ConcurrentHashMap<>();
+        initializeBrb();
+        initializeSeqNumbers();
     }
 }

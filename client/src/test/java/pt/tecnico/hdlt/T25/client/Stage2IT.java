@@ -105,15 +105,7 @@ public class Stage2IT extends TestBase {
         assertTrue(response);
         servers.get(2).shutdownServer();
 
-        Thread task = new Thread(() -> {
-            try {
-                servers.put(0, new Server(0, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
-
-        task.start();
+        servers.put(0, new Server(0, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
 
         System.out.println("Obtaining location report without server2");
         Location locationResponse = testClient.obtainLocationReportAtomic(testClient.getClientId(), 0);
@@ -122,15 +114,7 @@ public class Stage2IT extends TestBase {
         Assertions.assertEquals(originalLocation.getLatitude(), locationResponse.getLatitude());
         Assertions.assertEquals(originalLocation.getLongitude(), locationResponse.getLongitude());
 
-        Thread newTask = new Thread(() -> {
-            try {
-                servers.put(2, new Server(2, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
-
-        newTask.start();
+        servers.put(2, new Server(2, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
     }
 
     @Test
@@ -239,16 +223,8 @@ public class Stage2IT extends TestBase {
         servers.get(2).shutdownServer();
         servers.get(0).shutdownServer();
 
-        Thread task = new Thread(() -> {
-            try {
-                servers.put(0, new Server(0, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
-                servers.put(2, new Server(2, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
-
-        task.start();
+        servers.put(0, new Server(0, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
+        servers.put(2, new Server(2, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
 
         System.out.println("Obtaining location report");
         Location locationResponse = testClient.obtainLocationReportAtomic(testClient.getClientId(), 0);

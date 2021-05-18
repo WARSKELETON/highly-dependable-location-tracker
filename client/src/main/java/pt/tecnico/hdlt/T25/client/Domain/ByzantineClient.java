@@ -472,8 +472,7 @@ public class ByzantineClient extends Client {
 
         for (int serverId : getLocationServerServiceStubs().keySet()) {
             LocationServer.ObtainLocationReportRequest request = this.buildObtainLocationReportRequest(userId, ep, this.getSeqNumbers().get(serverId), serverId);
-            obtainLocationReport(getLocationServerServiceStubs().get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver);
-            this.getSeqNumbers().put(serverId, this.getSeqNumbers().get(serverId) + 1);
+            obtainLocationReport(getLocationServerServiceStubs().get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver, serverId);
         }
 
         finishLatch.await(5, TimeUnit.SECONDS);
