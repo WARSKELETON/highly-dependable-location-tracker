@@ -10,10 +10,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.protobuf.AbstractMessage;
 import com.google.protobuf.Empty;
-import io.grpc.BindableService;
-import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
-import io.grpc.ServerBuilder;
+import io.grpc.*;
 import io.grpc.stub.StreamObserver;
 import org.javatuples.Pair;
 import pt.tecnico.hdlt.T25.*;
@@ -26,6 +23,7 @@ import javax.crypto.spec.SecretKeySpec;
 import java.io.File;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
+import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.*;
@@ -698,7 +696,6 @@ public class Server {
             System.out.println("Server" + this.id + ": Sequence numbers do not match! Received " + receivedSeqNumber + " however expected " + expectedSeqNumber);
             throw new StaleException(sourceClientId, receivedSeqNumber, expectedSeqNumber);
         }
-        seqNumbers.put(sourceClientId, expectedSeqNumber + 1);
 
         LocationReport locationReport = locationReports.get(new Pair<>(locationRequest.getUserId(), locationRequest.getEp()));
         if (locationReport == null) {
@@ -718,6 +715,7 @@ public class Server {
 
         byte[] encodedKey = Crypto.generateSecretKey();
         SecretKeySpec newSecretKeySpec = new SecretKeySpec(encodedKey, "AES");
+        seqNumbers.put(sourceClientId, expectedSeqNumber + 1);
         return this.buildLocationReportResponse(locationReport, sourceClientId, seqNumbers.get(sourceClientId), newSecretKeySpec, encodedKey);
     }
 
@@ -875,6 +873,45 @@ public class Server {
                 .setContent(Crypto.encryptAES(secretKeySpec, responseString))
                 .setSignature(Crypto.sign(responseSignatureString, this.privateKey))
                 .build();
+    }
+
+    public int getUserIdFromObtainLocationReportRequest(LocationServer.ObtainLocationReportRequest request) {
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(request.getKey(), this.privateKey);
+            String requestContent = Crypto.decryptAES(secretKeySpec, request.getContent());
+            LocationReportRequest locationRequest = objectMapper.readValue(requestContent, LocationReportRequest.class);
+            return locationRequest.getSourceClientId();
+        } catch (GeneralSecurityException | JsonProcessingException ex) {
+            return 0;
+        }
+    }
+
+    public StatusRuntimeException buildException(Status.Code code, String description, int userId) {
+        try {
+            byte[] encodedKey = Crypto.generateSecretKey();
+            SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
+            Status status = Status.fromCode(code).withDescription(description);
+            seqNumbers.put(userId, seqNumbers.get(userId) + 1);
+            ExceptionMetadata exceptionMetadata = new ExceptionMetadata(Status.fromCode(code).getCode().toString(), description, userId, this.id, seqNumbers.get(userId));
+
+            Metadata metadata = new Metadata();
+
+            Metadata.Key<String> symmetricKey = Metadata.Key.of("symmetricKey", Metadata.ASCII_STRING_MARSHALLER);
+            Metadata.Key<String> exceptionMetadataKey = Metadata.Key.of("exceptionMetadataKey", Metadata.ASCII_STRING_MARSHALLER);
+            Metadata.Key<String> signature = Metadata.Key.of("signature", Metadata.ASCII_STRING_MARSHALLER);
+
+            metadata.put(symmetricKey, Crypto.encryptRSA(getEncoder().encodeToString(encodedKey), this.getUserPublicKey(userId)));
+            metadata.put(exceptionMetadataKey, Crypto.encryptAES(secretKeySpec, exceptionMetadata.toJsonString()));
+            metadata.put(signature, Crypto.sign(exceptionMetadata.toJsonString() + secretKeySpec.toString(), this.privateKey));
+
+            System.out.println("SERVER CONA " + exceptionMetadata.toJsonString() + secretKeySpec.toString());
+            ;
+            return status.asRuntimeException(metadata);
+        } catch (GeneralSecurityException ex) {
+            return Status.fromCode(code).withDescription(description).asRuntimeException();
+        }
     }
 
     private synchronized void saveCurrentServerState() throws IOException {

@@ -77,13 +77,13 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 			responseObserver.onNext(response);
 			responseObserver.onCompleted();
 		} catch (ReportNotFoundException ex) {
-			responseObserver.onError(Status.NOT_FOUND.withDescription(ex.getMessage()).asRuntimeException());
+			responseObserver.onError(locationServer.buildException(Status.NOT_FOUND.getCode(), ex.getMessage(), locationServer.getUserIdFromObtainLocationReportRequest(request)));
 		} catch (StaleException ex4) {
-			responseObserver.onError(Status.FAILED_PRECONDITION.withDescription(ex4.getMessage()).asRuntimeException());
+			responseObserver.onError(locationServer.buildException(Status.FAILED_PRECONDITION.getCode(), ex4.getMessage(), locationServer.getUserIdFromObtainLocationReportRequest(request)));
 		} catch (InvalidSignatureException ex2) {
-			responseObserver.onError(Status.PERMISSION_DENIED.withDescription(ex2.getMessage()).asRuntimeException());
+			responseObserver.onError(locationServer.buildException(Status.PERMISSION_DENIED.getCode(), ex2.getMessage(), locationServer.getUserIdFromObtainLocationReportRequest(request)));
 		} catch (IOException | GeneralSecurityException ex3) {
-			responseObserver.onError(Status.ABORTED.withDescription(ex3.getMessage()).asRuntimeException());
+			responseObserver.onError(locationServer.buildException(Status.ABORTED.getCode(), ex3.getMessage(), locationServer.getUserIdFromObtainLocationReportRequest(request)));
 		}
 	}
 
