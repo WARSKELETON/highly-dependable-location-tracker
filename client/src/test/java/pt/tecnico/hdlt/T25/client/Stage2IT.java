@@ -221,6 +221,44 @@ public class Stage2IT extends TestBase {
     }
 
     @Test
+    public void CrashAllServers() throws GeneralSecurityException, InterruptedException, IOException {
+        Client testClient = null;
+        for (Client client : clients.values()) {
+            if (client.getNearbyUsers(client.getMyLocation(0)).size() >= client.getMaxByzantineUsers() + client.getMaxNearbyByzantineUsers()) {
+                testClient = client;
+                break;
+            }
+        }
+
+        assert testClient != null;
+        System.out.println("user" + testClient.getClientId() + " building a correct report.");
+        Location originalLocation = testClient.getMyLocation(0);
+
+        boolean response = testClient.submitLocationReportAtomic(0, 10);
+        assertTrue(response);
+        servers.get(2).shutdownServer();
+        servers.get(0).shutdownServer();
+
+        Thread task = new Thread(() -> {
+            try {
+                servers.put(0, new Server(0, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
+                servers.put(2, new Server(2, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+
+        task.start();
+
+        System.out.println("Obtaining location report");
+        Location locationResponse = testClient.obtainLocationReportAtomic(testClient.getClientId(), 0);
+        Assertions.assertEquals(originalLocation.getUserId(), locationResponse.getUserId());
+        Assertions.assertEquals(originalLocation.getEp(), locationResponse.getEp());
+        Assertions.assertEquals(originalLocation.getLatitude(), locationResponse.getLatitude());
+        Assertions.assertEquals(originalLocation.getLongitude(), locationResponse.getLongitude());
+    }
+
+    @Test
     public void CorrectUserObtainsOwnProofs() throws GeneralSecurityException, InterruptedException, JsonProcessingException {
         Client testClient = null;
         for (Client client : clients.values()) {
