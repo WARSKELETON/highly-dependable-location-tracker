@@ -34,7 +34,7 @@ public class ClientApp {
 		final int maxNearbyByzantineUsers = Integer.parseInt(args[4]);
 		final int maxReplicas = Integer.parseInt(args[5]);
 		final int maxByzantineReplicas = Integer.parseInt(args[6]);
-		final String keystorePassword = args[8];
+		final String keystorePassword = args[7];
 
 		ObjectMapper objectMapper = new ObjectMapper();
 		SystemInfo systemInfo = objectMapper.readValue(new File("resources/grid.json"), SystemInfo.class);
@@ -43,7 +43,7 @@ public class ClientApp {
 			if (clientId == -1) {
 				new HAClient(serverHost, serverPort, clientId, systemInfo, false, maxByzantineUsers, maxReplicas, maxByzantineReplicas, keystorePassword);
 			} else {
-				if (args.length == 8 && Boolean.parseBoolean(args[7])) {
+				if (args.length == 9 && Boolean.parseBoolean(args[8])) {
 					System.err.println("I am a byzantine user");
 					new ByzantineClient(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, ByzantineClient.Flavor.CONSPIRATOR, false, maxReplicas, maxByzantineReplicas, keystorePassword);
 				} else {
