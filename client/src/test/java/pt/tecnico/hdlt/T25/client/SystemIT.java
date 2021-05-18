@@ -197,7 +197,6 @@ public class SystemIT extends TestBase {
     }
 
     @Test
-    @Timeout(value = 15, unit = SECONDS)
     public void ByzantineBuildsFakeReport() throws InterruptedException, GeneralSecurityException, JsonProcessingException {
         ByzantineClient byzantineClient = byzantineClients.get(new ArrayList<>(byzantineClients.keySet()).get(new Random().nextInt(byzantineClients.keySet().size())));
         for (ByzantineClient bc : byzantineClients.values()) {
@@ -223,7 +222,6 @@ public class SystemIT extends TestBase {
     }
 
     @Test
-    @Timeout(value = 5, unit = SECONDS)
     public void ByzantineBuildsReportOnBehalfOfAllPossibleUsers() throws InterruptedException {
         ByzantineClient byzantineClient = byzantineClients.get(new ArrayList<>(byzantineClients.keySet()).get(new Random().nextInt(byzantineClients.keySet().size())));
         // Setting all byzantines as conspirators to allow collaboration
@@ -337,7 +335,6 @@ public class SystemIT extends TestBase {
     }
 
     @Test
-    @Timeout(value = 5, unit = SECONDS)
     public void ReplaySubmissionReport() throws GeneralSecurityException, InterruptedException {
         Client testClient = null;
         for (Client client : clients.values()) {

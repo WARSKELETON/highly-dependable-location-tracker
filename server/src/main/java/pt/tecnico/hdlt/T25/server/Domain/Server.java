@@ -888,12 +888,40 @@ public class Server {
         }
     }
 
-    public StatusRuntimeException buildException(Status.Code code, String description, int userId) {
+    public int getUserIdFromRequestUserProofsRequest(LocationServer.RequestMyProofsRequest request) {
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(request.getKey(), this.privateKey);
+            String requestContent = Crypto.decryptAES(secretKeySpec, request.getContent());
+            ProofsRequest locationProofRequest = objectMapper.readValue(requestContent, ProofsRequest.class);
+            return locationProofRequest.getUserId();
+        } catch (GeneralSecurityException | JsonProcessingException ex) {
+            return 0;
+        }
+    }
+
+    public int getUserIdFromSubmitLocationReportRequest(LocationServer.SubmitLocationReportRequest request) {
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(request.getKey(), this.privateKey);
+            String requestHeader = Crypto.decryptAES(secretKeySpec, request.getHeader());
+            SubmitLocationReportRequestHeader locationReportRequestHeader = objectMapper.readValue(requestHeader, SubmitLocationReportRequestHeader.class);
+            return locationReportRequestHeader.getClientId();
+        } catch (GeneralSecurityException | JsonProcessingException ex) {
+            return 0;
+        }
+    }
+
+    public StatusRuntimeException buildException(Status.Code code, String description, int userId, boolean sumSeqNumber) {
         try {
             byte[] encodedKey = Crypto.generateSecretKey();
             SecretKeySpec secretKeySpec = new SecretKeySpec(encodedKey, "AES");
             Status status = Status.fromCode(code).withDescription(description);
-            seqNumbers.put(userId, seqNumbers.get(userId) + 1);
+
+            if (sumSeqNumber) seqNumbers.put(userId, seqNumbers.get(userId) + 1);
+
             ExceptionMetadata exceptionMetadata = new ExceptionMetadata(Status.fromCode(code).getCode().toString(), description, userId, this.id, seqNumbers.get(userId));
 
             Metadata metadata = new Metadata();
@@ -906,8 +934,6 @@ public class Server {
             metadata.put(exceptionMetadataKey, Crypto.encryptAES(secretKeySpec, exceptionMetadata.toJsonString()));
             metadata.put(signature, Crypto.sign(exceptionMetadata.toJsonString() + secretKeySpec.toString(), this.privateKey));
 
-            System.out.println("SERVER CONA " + exceptionMetadata.toJsonString() + secretKeySpec.toString());
-            ;
             return status.asRuntimeException(metadata);
         } catch (GeneralSecurityException ex) {
             return Status.fromCode(code).withDescription(description).asRuntimeException();

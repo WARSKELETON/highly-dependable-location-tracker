@@ -5,7 +5,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.*;
 import io.grpc.stub.StreamObserver;
-import org.javatuples.Pair;
 import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.LocationServerServiceGrpc;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
@@ -436,11 +435,17 @@ abstract class AbstractClient {
             public void accept(Throwable throwable) {
                 synchronized (finishLatch) {
                     if (finishLatch.getCount() == 0) return;
+                    StatusRuntimeException exception = Status.fromThrowable(throwable).asRuntimeException();
+                    Metadata metadata = Status.trailersFromThrowable(throwable);
 
-                    if (throwable.getMessage().contains("ALREADY_EXISTS")) {
-                        finishLatch.countDown();
+                    try {
+                        if (exception.getStatus().getCode() == Status.Code.ALREADY_EXISTS && verifyServerException(exception, metadata)) {
+                            System.out.println("user" + getClientId() + ": Caught ALREADY_EXISTS verified exception with message " + exception.getMessage());
+                            finishLatch.countDown();
+                        }
+                    } catch (GeneralSecurityException | JsonProcessingException e) {
+                        e.printStackTrace();
                     }
-                    System.out.println(throwable.getMessage());
                 }
             }
         };

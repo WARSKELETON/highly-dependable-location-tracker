@@ -54,13 +54,13 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 			responseObserver.onNext(response);
 			responseObserver.onCompleted();
 		} catch (DuplicateReportException ex) {
-			responseObserver.onError(Status.ALREADY_EXISTS.withDescription(ex.getMessage()).asRuntimeException());
+			responseObserver.onError(locationServer.buildException(Status.ALREADY_EXISTS.getCode(), ex.getMessage(), locationServer.getUserIdFromSubmitLocationReportRequest(request), false));
 		} catch (InvalidNumberOfProofsException ex2) {
-			responseObserver.onError(Status.INVALID_ARGUMENT.withDescription(ex2.getMessage()).asRuntimeException());
+			responseObserver.onError(locationServer.buildException(Status.INVALID_ARGUMENT.getCode(), ex2.getMessage(), locationServer.getUserIdFromSubmitLocationReportRequest(request), false));
 		} catch (InvalidSignatureException | InvalidProofOfWorkException ex3) {
-			responseObserver.onError(Status.UNAUTHENTICATED.withDescription(ex3.getMessage()).asRuntimeException());
+			responseObserver.onError(locationServer.buildException(Status.UNAUTHENTICATED.getCode(), ex3.getMessage(), locationServer.getUserIdFromSubmitLocationReportRequest(request), false));
 		} catch (GeneralSecurityException | IOException | InterruptedException ex4) {
-			responseObserver.onError(Status.ABORTED.withDescription(ex4.getMessage()).asRuntimeException());
+			responseObserver.onError(locationServer.buildException(Status.ABORTED.getCode(), ex4.getMessage(), locationServer.getUserIdFromSubmitLocationReportRequest(request), false));
 		}
 	}
 
@@ -77,13 +77,13 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 			responseObserver.onNext(response);
 			responseObserver.onCompleted();
 		} catch (ReportNotFoundException ex) {
-			responseObserver.onError(locationServer.buildException(Status.NOT_FOUND.getCode(), ex.getMessage(), locationServer.getUserIdFromObtainLocationReportRequest(request)));
+			responseObserver.onError(locationServer.buildException(Status.NOT_FOUND.getCode(), ex.getMessage(), locationServer.getUserIdFromObtainLocationReportRequest(request), true));
 		} catch (StaleException ex4) {
-			responseObserver.onError(locationServer.buildException(Status.FAILED_PRECONDITION.getCode(), ex4.getMessage(), locationServer.getUserIdFromObtainLocationReportRequest(request)));
+			responseObserver.onError(locationServer.buildException(Status.FAILED_PRECONDITION.getCode(), ex4.getMessage(), locationServer.getUserIdFromObtainLocationReportRequest(request), true));
 		} catch (InvalidSignatureException ex2) {
-			responseObserver.onError(locationServer.buildException(Status.PERMISSION_DENIED.getCode(), ex2.getMessage(), locationServer.getUserIdFromObtainLocationReportRequest(request)));
+			responseObserver.onError(locationServer.buildException(Status.PERMISSION_DENIED.getCode(), ex2.getMessage(), locationServer.getUserIdFromObtainLocationReportRequest(request), true));
 		} catch (IOException | GeneralSecurityException ex3) {
-			responseObserver.onError(locationServer.buildException(Status.ABORTED.getCode(), ex3.getMessage(), locationServer.getUserIdFromObtainLocationReportRequest(request)));
+			responseObserver.onError(locationServer.buildException(Status.ABORTED.getCode(), ex3.getMessage(), locationServer.getUserIdFromObtainLocationReportRequest(request), true));
 		}
 	}
 
@@ -99,12 +99,12 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
 
 			responseObserver.onNext(response);
 			responseObserver.onCompleted();
-		} catch (StaleException ex3) {
-			responseObserver.onError(Status.FAILED_PRECONDITION.withDescription(ex3.getMessage()).asRuntimeException());
-		} catch (InvalidSignatureException ex) {
-			responseObserver.onError(Status.PERMISSION_DENIED.withDescription(ex.getMessage()).asRuntimeException());
-		} catch (GeneralSecurityException | IOException ex2) {
-			responseObserver.onError(Status.ABORTED.withDescription(ex2.getMessage()).asRuntimeException());
+		} catch (StaleException ex) {
+			responseObserver.onError(locationServer.buildException(Status.FAILED_PRECONDITION.getCode(), ex.getMessage(), -1, true));
+		} catch (InvalidSignatureException ex2) {
+			responseObserver.onError(locationServer.buildException(Status.PERMISSION_DENIED.getCode(), ex2.getMessage(), -1, true));
+		} catch (GeneralSecurityException | IOException ex3) {
+			responseObserver.onError(locationServer.buildException(Status.ABORTED.getCode(), ex3.getMessage(), -1, true));
 		}
 	}
 
@@ -121,14 +121,11 @@ public class LocationServerServiceImpl extends LocationServerServiceGrpc.Locatio
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (StaleException ex) {
-            System.out.println("StaleException" + ex.getMessage());
-            responseObserver.onError(Status.FAILED_PRECONDITION.withDescription(ex.getMessage()).asRuntimeException());
-        } catch (InvalidSignatureException ex) {
-            System.out.println("InvalidSignatureException" + ex.getMessage());
-            responseObserver.onError(Status.PERMISSION_DENIED.withDescription(ex.getMessage()).asRuntimeException());
-        } catch (GeneralSecurityException | IOException ex2) {
-            System.out.println("GeneralSecurityException" + ex2.getMessage());
-            responseObserver.onError(Status.ABORTED.withDescription(ex2.getMessage()).asRuntimeException());
+			responseObserver.onError(locationServer.buildException(Status.FAILED_PRECONDITION.getCode(), ex.getMessage(), locationServer.getUserIdFromRequestUserProofsRequest(request), true));
+        } catch (InvalidSignatureException ex2) {
+			responseObserver.onError(locationServer.buildException(Status.PERMISSION_DENIED.getCode(), ex2.getMessage(), locationServer.getUserIdFromRequestUserProofsRequest(request), true));
+        } catch (GeneralSecurityException | IOException ex3) {
+			responseObserver.onError(locationServer.buildException(Status.ABORTED.getCode(), ex3.getMessage(), locationServer.getUserIdFromRequestUserProofsRequest(request), true));
         }
     }
 }

@@ -2,6 +2,8 @@ package pt.tecnico.hdlt.T25.client.Domain;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.grpc.Metadata;
+import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
 import pt.tecnico.hdlt.T25.LocationServer;
@@ -103,10 +105,29 @@ public class HAClient extends AbstractClient {
             }
         };
 
+        Consumer<Throwable> requestOnErrorObserver = new Consumer<>() {
+            @Override
+            public void accept(Throwable throwable) {
+                synchronized (finishLatch) {
+                    if (finishLatch.getCount() == 0) return;
+                    StatusRuntimeException exception = Status.fromThrowable(throwable).asRuntimeException();
+                    Metadata metadata = Status.trailersFromThrowable(throwable);
+
+                    try {
+                        if (verifyServerException(exception, metadata)) {
+                            System.out.println("user" + getClientId() + ": Caught verified exception with message " + exception.getMessage());
+                        }
+                    } catch (GeneralSecurityException | JsonProcessingException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        };
+
         for (int serverId : getLocationServerServiceStubs().keySet()) {
             System.out.println("Sending request to server" + serverId);
             LocationServer.ObtainUsersAtLocationRequest request = buildObtainUsersAtLocationRequest(latitude, longitude, ep, this.getSeqNumbers().get(serverId), serverId);
-            obtainUsersAtLocation(getLocationServerServiceStubs().get(serverId), request, requestObserver, serverId);
+            obtainUsersAtLocation(getLocationServerServiceStubs().get(serverId), request, requestObserver, requestOnErrorObserver, serverId);
         }
 
         finishLatch.await(5, TimeUnit.SECONDS);
@@ -127,18 +148,19 @@ public class HAClient extends AbstractClient {
         return new ArrayList<>(locations.values());
     }
 
-    public void obtainUsersAtLocation(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.ObtainUsersAtLocationRequest request, Consumer<LocationServer.ObtainUsersAtLocationResponse> callback, int serverId) {
+    public void obtainUsersAtLocation(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.ObtainUsersAtLocationRequest request, Consumer<LocationServer.ObtainUsersAtLocationResponse> successCallback, Consumer<Throwable> errorCallback, int serverId) {
         try {
             locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).obtainUsersAtLocation(request, new StreamObserver<>() {
                 @Override
                 public void onNext(LocationServer.ObtainUsersAtLocationResponse response) {
-                    callback.accept(response);
                     getSeqNumbers().put(serverId, getSeqNumbers().get(serverId) + 1);
+                    successCallback.accept(response);
                 }
 
                 @Override
                 public void onError(Throwable t) {
                     getSeqNumbers().put(serverId, getSeqNumbers().get(serverId) + 1);
+                    errorCallback.accept(t);
                 }
 
                 @Override

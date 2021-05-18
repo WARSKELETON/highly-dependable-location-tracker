@@ -277,10 +277,16 @@ public class Client extends AbstractClient {
             public void accept(Throwable throwable) {
                 synchronized (finishLatch) {
                     if (finishLatch.getCount() == 0) return;
+                    StatusRuntimeException exception = Status.fromThrowable(throwable).asRuntimeException();
+                    Metadata metadata = Status.trailersFromThrowable(throwable);
 
-                    if (throwable.getMessage().contains("ALREADY_EXISTS")) {
-                        System.out.println("user" + getClientId() + ": Duplicate report!");
-                        finishLatch.countDown();
+                    try {
+                        if (exception.getStatus().getCode() == Status.Code.ALREADY_EXISTS && verifyServerException(exception, metadata)) {
+                            System.out.println("user" + getClientId() + ": Caught ALREADY_EXISTS verified exception with message " + exception.getMessage());
+                            finishLatch.countDown();
+                        }
+                    } catch (GeneralSecurityException | JsonProcessingException e) {
+                        e.printStackTrace();
                     }
                 }
             }
@@ -359,7 +365,7 @@ public class Client extends AbstractClient {
 
         final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
 
-        Consumer<LocationServer.RequestMyProofsResponse> requestObserver = new Consumer<>() {
+        Consumer<LocationServer.RequestMyProofsResponse> requestOnSuccessObserver = new Consumer<>() {
             @Override
             public void accept(LocationServer.RequestMyProofsResponse response)  {
                 synchronized (finishLatch) {
@@ -378,9 +384,28 @@ public class Client extends AbstractClient {
             }
         };
 
+        Consumer<Throwable> requestOnErrorObserver = new Consumer<>() {
+            @Override
+            public void accept(Throwable throwable) {
+                synchronized (finishLatch) {
+                    if (finishLatch.getCount() == 0) return;
+                    StatusRuntimeException exception = Status.fromThrowable(throwable).asRuntimeException();
+                    Metadata metadata = Status.trailersFromThrowable(throwable);
+
+                    try {
+                        if (verifyServerException(exception, metadata)) {
+                            System.out.println("user" + getClientId() + ": Caught verified exception with message " + exception.getMessage());
+                        }
+                    } catch (GeneralSecurityException | JsonProcessingException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        };
+
         for (int serverId : getLocationServerServiceStubs().keySet()) {
             LocationServer.RequestMyProofsRequest request = buildRequestMyProofsRequest(userId, eps, this.getSeqNumbers().get(serverId), serverId);
-            requestMyProofs(getLocationServerServiceStubs().get(serverId), request, requestObserver, serverId);
+            requestMyProofs(getLocationServerServiceStubs().get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver, serverId);
         }
 
         finishLatch.await(10, TimeUnit.SECONDS);
@@ -402,18 +427,19 @@ public class Client extends AbstractClient {
         }
     }
 
-    private void requestMyProofs(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.RequestMyProofsRequest request, Consumer<LocationServer.RequestMyProofsResponse> callback, int serverId) throws GeneralSecurityException {
+    private void requestMyProofs(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.RequestMyProofsRequest request, Consumer<LocationServer.RequestMyProofsResponse> callbackOnSuccess, Consumer<Throwable> callbackOnError, int serverId) {
         try {
             locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).requestMyProofs(request, new StreamObserver<>() {
                 @Override
                 public void onNext(LocationServer.RequestMyProofsResponse response) {
                     getSeqNumbers().put(serverId, getSeqNumbers().get(serverId) + 1);
-                    callback.accept(response);
+                    callbackOnSuccess.accept(response);
                 }
 
                 @Override
                 public void onError(Throwable t) {
                     getSeqNumbers().put(serverId, getSeqNumbers().get(serverId) + 1);
+                    callbackOnError.accept(t);
                 }
 
                 @Override
