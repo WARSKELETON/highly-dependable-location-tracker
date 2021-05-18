@@ -12,10 +12,7 @@ import pt.tecnico.hdlt.T25.crypto.Crypto;
 
 import javax.crypto.spec.SecretKeySpec;
 import java.security.GeneralSecurityException;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -213,5 +210,9 @@ public class HAClient extends AbstractClient {
                 System.err.println(ex2.getMessage());
             }
         }
+    }
+
+    public void cleanup() {
+        this.cleanSeqNumbers();
     }
 }

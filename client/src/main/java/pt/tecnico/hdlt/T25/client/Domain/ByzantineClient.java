@@ -491,7 +491,11 @@ public class ByzantineClient extends Client {
             }
         }
 
-        return obtainLocationFromReportResponse(reportResponses.get(0));
+        if (reportResponses.isEmpty()) {
+            return null;
+        } else {
+            return obtainLocationFromReportResponse(reportResponses.get(0));
+        }
     }
 
     @Override

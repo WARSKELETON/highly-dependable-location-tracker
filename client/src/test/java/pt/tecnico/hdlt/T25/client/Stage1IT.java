@@ -11,13 +11,14 @@ import pt.tecnico.hdlt.T25.client.Domain.Location;
 import pt.tecnico.hdlt.T25.server.Domain.ByzantineServer;
 import pt.tecnico.hdlt.T25.server.Domain.Server;
 
+import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.*;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class SystemIT extends TestBase {
+public class Stage1IT extends TestBase {
     // initialization and clean-up for each test
 
     @BeforeEach
@@ -33,6 +34,8 @@ public class SystemIT extends TestBase {
         for (ByzantineServer byzantineServer : byzantineServers.values()) {
             byzantineServer.cleanUp();
         }
+
+        haClient.cleanup();
 
         for (Client client : clients.values()) {
             client.cleanup();
@@ -325,7 +328,7 @@ public class SystemIT extends TestBase {
         System.out.println("byzantineUser" + byzantineClient.getClientId() + " tries to obtain users at location " + location.getLatitude() + ", " + location.getLongitude());
 
         List<Location> locations = byzantineClient.obtainUsersAtLocationRegular(location.getLatitude(), location.getLongitude(), 0, byzantineClient.getMaxTriesBeforeTimeout());
-        assertNull(locations);
+        Assertions.assertEquals(0, locations.size());
     }
 
     @Test
@@ -345,78 +348,6 @@ public class SystemIT extends TestBase {
         assertTrue(response);
 
         response = testClient.submitLocationReportAtomic(0, testClient.getMaxTriesBeforeTimeout());
-        assertFalse(response);
-    }
-
-    /*@Test
-    public void DropReport() throws GeneralSecurityException, InterruptedException, IOException {
-        server.shutdownServer();
-        Client testClient = null;
-        for (Client client : clients.values()) {
-            if (client.getNearbyUsers(client.getMyLocation(0)).size() >= client.getMaxByzantineUsers() + client.getMaxNearbyByzantineUsers()) {
-                testClient = client;
-                break;
-            }
-        }
-
-        assert testClient != null;
-        System.out.println("user" + testClient.getClientId() + " building a correct report.");
-        Location originalLocation = testClient.getMyLocation(0);
-
-        Client finalTestClient = testClient;
-        Thread task = new Thread(()  -> {
-            try {
-                boolean response = finalTestClient.submitLocationReportAtomic(0, 10);
-                assertTrue(response);
-            } catch (GeneralSecurityException | InterruptedException e) {
-                e.printStackTrace();
-            }
-        });
-        task.start();
-
-        Thread.sleep(4000);
-        server.startServer();
-        Thread.sleep(5000);
-        Location locationResponse = testClient.obtainLocationReportAtomic(testClient.getClientId(), 0);
-        Assertions.assertEquals(originalLocation.getUserId(), locationResponse.getUserId());
-        Assertions.assertEquals(originalLocation.getEp(), locationResponse.getEp());
-        Assertions.assertEquals(originalLocation.getLatitude(), locationResponse.getLatitude());
-        Assertions.assertEquals(originalLocation.getLongitude(), locationResponse.getLongitude());
-    } */
-
-    /*@Test
-    public void CrashServer() throws GeneralSecurityException, InterruptedException, IOException {
-        Client testClient = null;
-        for (Client client : clients.values()) {
-            if (client.getNearbyUsers(client.getMyLocation(0)).size() >= client.getMaxByzantineUsers() + client.getMaxNearbyByzantineUsers()) {
-                testClient = client;
-                break;
-            }
-        }
-
-        assert testClient != null;
-        System.out.println("user" + testClient.getClientId() + " building a correct report.");
-        Location originalLocation = testClient.getMyLocation(0);
-
-        boolean response = testClient.submitLocationReportAtomic(0, testClient.getMaxTriesBeforeTimeout());
         assertTrue(response);
-        server.shutdownServer();
-
-        Client finalTestClient = testClient;
-        Thread task = new Thread(() -> {
-            try {
-                server = new Server(serverPort, systemInfo.getNumberOfUsers(), systemInfo.getStep(), finalTestClient.getMaxByzantineUsers(), finalTestClient.getMaxNearbyByzantineUsers());
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
-
-        task.start();
-
-        Location locationResponse = testClient.obtainLocationReportAtomic(testClient.getClientId(), 0);
-        Assertions.assertEquals(originalLocation.getUserId(), locationResponse.getUserId());
-        Assertions.assertEquals(originalLocation.getEp(), locationResponse.getEp());
-        Assertions.assertEquals(originalLocation.getLatitude(), locationResponse.getLatitude());
-        Assertions.assertEquals(originalLocation.getLongitude(), locationResponse.getLongitude());
-    } */
+    }
 }

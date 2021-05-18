@@ -580,7 +580,11 @@ abstract class AbstractClient {
             }
         }
 
-        return obtainLocationFromReportResponse(reportResponses.get(0));
+        if (reportResponses.isEmpty()) {
+            return null;
+        } else {
+            return obtainLocationFromReportResponse(reportResponses.get(0));
+        }
     }
 
     public void obtainLocationReport(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.ObtainLocationReportRequest request, Consumer<LocationServer.ObtainLocationReportResponse> callbackOnSuccess, Consumer<Throwable> callbackOnError, int serverId) {

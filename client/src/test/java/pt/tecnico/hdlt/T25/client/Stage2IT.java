@@ -32,6 +32,8 @@ public class Stage2IT extends TestBase {
             byzantineServer.cleanUp();
         }
 
+        haClient.cleanup();
+
         for (Client client : clients.values()) {
             client.cleanup();
         }
@@ -259,5 +261,58 @@ public class Stage2IT extends TestBase {
         }
 
         Assertions.assertEquals(testClient.getMaxByzantineUsers(), count);
+    }
+
+    @Test
+    public void DropReport() throws GeneralSecurityException, InterruptedException, IOException {
+        Client testClient = null;
+        for (Client client : clients.values()) {
+            if (client.getNearbyUsers(client.getMyLocation(0)).size() >= client.getMaxByzantineUsers() + client.getMaxNearbyByzantineUsers()) {
+                testClient = client;
+                break;
+            }
+        }
+
+        assert testClient != null;
+        System.out.println("user" + testClient.getClientId() + " building a correct report.");
+        Location originalLocation = testClient.getMyLocation(0);
+
+        for (Server server : servers.values()) {
+            server.shutdownServer();
+        }
+
+        for (ByzantineServer byzantineServer : byzantineServers.values()) {
+            byzantineServer.shutdownServer();
+        }
+
+        Client finalTestClient = testClient;
+        Thread task = new Thread(() -> {
+            try {
+                boolean response = finalTestClient.submitLocationReportAtomic(0, finalTestClient.getMaxTriesBeforeTimeout());
+                assertTrue(response);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+
+        task.start();
+
+        Thread.sleep(2000);
+
+        for (Integer serverId : servers.keySet()) {
+            servers.put(serverId, new Server(serverId, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
+        }
+
+        for (Integer serverId : byzantineServers.keySet()) {
+            servers.put(serverId, new ByzantineServer(serverId, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
+        }
+
+        Thread.sleep(15000);
+
+        Location locationResponse = testClient.obtainLocationReportAtomic(testClient.getClientId(), 0, testClient.getMaxTriesBeforeTimeout());
+        Assertions.assertEquals(originalLocation.getUserId(), locationResponse.getUserId());
+        Assertions.assertEquals(originalLocation.getEp(), locationResponse.getEp());
+        Assertions.assertEquals(originalLocation.getLatitude(), locationResponse.getLatitude());
+        Assertions.assertEquals(originalLocation.getLongitude(), locationResponse.getLongitude());
     }
 }
