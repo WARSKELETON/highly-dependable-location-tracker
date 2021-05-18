@@ -13,6 +13,8 @@ import pt.tecnico.hdlt.T25.server.Domain.ByzantineServer;
 import pt.tecnico.hdlt.T25.server.Domain.Server;
 
 import java.io.IOException;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 public class TestBase {
@@ -61,17 +63,6 @@ public class TestBase {
             maxNearbyByzantineUsers = Integer.parseInt(testProps.getProperty("maxNearbyByzantineUsers"));
             maxReplicas = Integer.parseInt(testProps.getProperty("server.maxReplicas"));
             maxByzantineReplicas = Integer.parseInt(testProps.getProperty("server.maxByzantineReplicas"));
-
-            /*
-            // Generate private keys and public keys
-            for (int i = 0; i < maxReplicas; i++)
-                RSAKeyGenerator.write("server" + i + ".jks", "server" + i + "-pub.key", "server" + i, "server" + i);
-
-            RSAKeyGenerator.write("ha.jks", "ha-pub.key", "ha", "ha");
-
-            for (int i = 0; i < maxReplicas; i++)
-                RSAKeyGenerator.write("client" + i + ".jks", "client" + i + "-pub.key", "client" + i, "client" + i);
-            */
 
             servers = new HashMap<>();
             byzantineServers = new HashMap<>();

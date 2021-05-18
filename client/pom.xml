@@ -35,6 +35,7 @@
 		<client.isByzantine>false</client.isByzantine>
 		<server.maxReplicas>4</server.maxReplicas>
 		<server.maxByzantineReplicas>1</server.maxByzantineReplicas>
+		<keystorePassword>client1</keystorePassword>
 	</properties>
 
 	<dependencies>
@@ -133,9 +134,10 @@
 						<argument>${client.id}</argument>
 						<argument>${maxByzantineUsers}</argument>
                         <argument>${maxNearbyByzantineUsers}</argument>
-                        <argument>${client.isByzantine}</argument>
 						<argument>${server.maxReplicas}</argument>
 						<argument>${server.maxByzantineReplicas}</argument>
+						<argument>${client.isByzantine}</argument>
+						<argument>${keystorePassword}</argument>
 					</arguments>
 				</configuration>
 			</plugin>
