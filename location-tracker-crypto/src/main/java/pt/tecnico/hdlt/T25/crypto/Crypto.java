@@ -45,7 +45,7 @@ public class Crypto {
 
             return (RSAPrivateKey) keyStore.getKey(keyId, password.toCharArray());
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("Failed to get private key.");
             return null;
         }
     }
