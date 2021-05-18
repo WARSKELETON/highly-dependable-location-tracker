@@ -70,7 +70,7 @@ public class Stage2IT extends TestBase {
         boolean response = byzantineClient.submitLocationReportAtomic(0, 10);
         assertTrue(response);
 
-        Location locationResponse = byzantineClient.obtainLocationReportAtomic(byzantineClient.getClientId(), 0);
+        Location locationResponse = byzantineClient.obtainLocationReportAtomic(byzantineClient.getClientId(), 0, byzantineClient.getMaxTriesBeforeTimeout());
 
         Assertions.assertEquals(spoofedLocation.getUserId(), locationResponse.getUserId());
         Assertions.assertEquals(spoofedLocation.getEp(), locationResponse.getEp());
@@ -78,11 +78,11 @@ public class Stage2IT extends TestBase {
         Assertions.assertEquals(spoofedLocation.getLongitude(), locationResponse.getLongitude());
 
         System.out.println("HAClient obtains users for " + spoofedLocation.getEp() + " " + spoofedLocation.getLatitude() + ", " + spoofedLocation.getLongitude());
-        List<Location> locationResponses = haClient.obtainUsersAtLocationRegular(spoofedLocation.getLatitude(), spoofedLocation.getLongitude(), spoofedLocation.getEp());
+        List<Location> locationResponses = haClient.obtainUsersAtLocationRegular(spoofedLocation.getLatitude(), spoofedLocation.getLongitude(), spoofedLocation.getEp(), haClient.getMaxTriesBeforeTimeout());
         assertEquals(0, locationResponses.stream().filter(location -> location.getUserId() == spoofedLocation.getUserId()).count());
 
         System.out.println("HAClient location report for user" + byzantineClient.getClientId() + " at epoch " + spoofedLocation.getEp());
-        Location haLocationResponse = haClient.obtainLocationReportAtomic(byzantineClient.getClientId(), 0);
+        Location haLocationResponse = haClient.obtainLocationReportAtomic(byzantineClient.getClientId(), 0, haClient.getMaxTriesBeforeTimeout());
     }
 
     @Test
@@ -108,7 +108,7 @@ public class Stage2IT extends TestBase {
         servers.put(0, new Server(0, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
 
         System.out.println("Obtaining location report without server2");
-        Location locationResponse = testClient.obtainLocationReportAtomic(testClient.getClientId(), 0);
+        Location locationResponse = testClient.obtainLocationReportAtomic(testClient.getClientId(), 0, testClient.getMaxTriesBeforeTimeout());
         Assertions.assertEquals(originalLocation.getUserId(), locationResponse.getUserId());
         Assertions.assertEquals(originalLocation.getEp(), locationResponse.getEp());
         Assertions.assertEquals(originalLocation.getLatitude(), locationResponse.getLatitude());
@@ -184,7 +184,7 @@ public class Stage2IT extends TestBase {
         boolean response = byzantineClient.submitLocationReportAtomic(0, 10);
         assertTrue(response);
 
-        Location locationResponse = byzantineClient.obtainLocationReportAtomic(byzantineClient.getClientId(), 0);
+        Location locationResponse = byzantineClient.obtainLocationReportAtomic(byzantineClient.getClientId(), 0, byzantineClient.getMaxTriesBeforeTimeout());
 
         Assertions.assertEquals(spoofedLocation.getUserId(), locationResponse.getUserId());
         Assertions.assertEquals(spoofedLocation.getEp(), locationResponse.getEp());
@@ -227,7 +227,7 @@ public class Stage2IT extends TestBase {
         servers.put(2, new Server(2, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
 
         System.out.println("Obtaining location report");
-        Location locationResponse = testClient.obtainLocationReportAtomic(testClient.getClientId(), 0);
+        Location locationResponse = testClient.obtainLocationReportAtomic(testClient.getClientId(), 0, testClient.getMaxTriesBeforeTimeout());
         Assertions.assertEquals(originalLocation.getUserId(), locationResponse.getUserId());
         Assertions.assertEquals(originalLocation.getEp(), locationResponse.getEp());
         Assertions.assertEquals(originalLocation.getLatitude(), locationResponse.getLatitude());

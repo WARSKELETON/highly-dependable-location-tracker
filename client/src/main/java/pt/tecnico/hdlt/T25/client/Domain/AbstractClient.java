@@ -25,6 +25,9 @@ import static io.grpc.Status.DEADLINE_EXCEEDED;
 
 abstract class AbstractClient {
     private static final int SERVER_ORIGINAL_PORT = 8080;
+    private static final int PUZZLE_DIFFICULTY = 2;
+
+    private final int MAX_TRIES_BEFORE_TIMEOUT = 2;
 
     private String serverHost;
     private int serverPort;
@@ -127,6 +130,10 @@ abstract class AbstractClient {
 
     public Map<Integer, LocationServerServiceGrpc.LocationServerServiceStub> getLocationServerServiceStubs() {
         return locationServerServiceStubs;
+    }
+
+    public int getMaxTriesBeforeTimeout() {
+        return MAX_TRIES_BEFORE_TIMEOUT;
     }
 
     private void connectToServers() {
@@ -343,20 +350,25 @@ abstract class AbstractClient {
 
     public void generateProofOfWork(SubmitLocationReportRequestHeader header, String content) throws GeneralSecurityException {
         byte[] hash;
-        int counter = 0;
+        int nonce = 0;
         while (true) {
-            hash = Crypto.getSHA256Hash(content + counter);
+            hash = Crypto.getSHA256Hash(content + nonce);
 
-            if (hash[0] == 0) {
-                break;
+            int numberOfZeros = 0;
+            for (int i = 0; i < PUZZLE_DIFFICULTY; i++) {
+                if (hash[i] == 0) {
+                    numberOfZeros++;
+                }
             }
 
-            counter++;
+            if (numberOfZeros == PUZZLE_DIFFICULTY) break;
+
+            nonce++;
         }
 
-        System.out.println("user" + getClientId() + ": Finished generating proof of work got counter " + counter + " and " + Base64.getEncoder().encodeToString(hash));
+        System.out.println("user" + getClientId() + ": Finished generating proof of work got counter " + nonce + " and " + Base64.getEncoder().encodeToString(hash));
         header.setProofOfWork(Base64.getEncoder().encodeToString(hash));
-        header.setCounter(counter);
+        header.setCounter(nonce);
     }
 
     private LocationServer.SubmitLocationReportRequest buildSubmitLocationReportRequestWriteBack(LocationServer.ObtainLocationReportResponse response, int serverId) throws GeneralSecurityException, JsonProcessingException {
@@ -503,7 +515,7 @@ abstract class AbstractClient {
         return objectMapper.readValue(locationProverContent, Location.class);
     }
 
-    public Location obtainLocationReportAtomic(int userId, int ep) throws GeneralSecurityException, InterruptedException, JsonProcessingException {
+    public Location obtainLocationReportAtomic(int userId, int ep, int maxRequests) throws GeneralSecurityException, InterruptedException, JsonProcessingException {
         List<LocationServer.ObtainLocationReportResponse> reportResponses = new ArrayList<>();
 
         final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
@@ -564,7 +576,7 @@ abstract class AbstractClient {
             if (finishLatch.getCount() == 0 && reportResponses.isEmpty()) {
                 return null;
             } else {
-                obtainLocationReportAtomic(userId, ep);
+                obtainLocationReportAtomic(userId, ep, 5);
             }
         }
 

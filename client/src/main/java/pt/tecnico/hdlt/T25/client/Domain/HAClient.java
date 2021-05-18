@@ -12,12 +12,14 @@ import pt.tecnico.hdlt.T25.crypto.Crypto;
 
 import javax.crypto.spec.SecretKeySpec;
 import java.security.GeneralSecurityException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 import static io.grpc.Status.DEADLINE_EXCEEDED;
 import static pt.tecnico.hdlt.T25.crypto.Crypto.getPriv;
@@ -68,7 +70,9 @@ public class HAClient extends AbstractClient {
         return verifyLocationReport(location.getUserId(), ep, response) && location.getEp() == ep && location.getLatitude() == latitude && location.getLongitude() == longitude;
     }
 
-    public List<Location> obtainUsersAtLocationRegular(int latitude, int longitude, int ep) throws GeneralSecurityException, InterruptedException {
+    public List<Location> obtainUsersAtLocationRegular(int latitude, int longitude, int ep, int maxRequests) throws GeneralSecurityException, InterruptedException {
+        if (maxRequests == 0) return null;
+
         Map<Integer, Location> locations = new ConcurrentHashMap<>();
 
         final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
@@ -142,7 +146,7 @@ public class HAClient extends AbstractClient {
                 System.out.println("user" + getClientId() + ": Got no users");
             }
         } else {
-            obtainUsersAtLocationRegular(latitude, longitude, ep);
+            obtainUsersAtLocationRegular(latitude, longitude, ep, --maxRequests);
         }
 
         return new ArrayList<>(locations.values());
@@ -189,7 +193,7 @@ public class HAClient extends AbstractClient {
             int ep = Integer.parseInt(args[2]);
 
             try {
-                this.obtainLocationReportAtomic(userId, ep);
+                this.obtainLocationReportAtomic(userId, ep, 5);
             } catch (StatusRuntimeException | InterruptedException ex2) {
                 System.err.println(ex2.getMessage());
             }
@@ -204,7 +208,7 @@ public class HAClient extends AbstractClient {
             int ep = Integer.parseInt(args[3]);
 
             try {
-                this.obtainUsersAtLocationRegular(latitude, longitude, ep);
+                this.obtainUsersAtLocationRegular(latitude, longitude, ep, 5);
             } catch (StatusRuntimeException | InterruptedException ex2) {
                 System.err.println(ex2.getMessage());
             }

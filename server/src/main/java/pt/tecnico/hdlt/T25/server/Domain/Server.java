@@ -3,7 +3,6 @@ package pt.tecnico.hdlt.T25.server.Domain;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -13,7 +12,9 @@ import com.google.protobuf.Empty;
 import io.grpc.*;
 import io.grpc.stub.StreamObserver;
 import org.javatuples.Pair;
-import pt.tecnico.hdlt.T25.*;
+import pt.tecnico.hdlt.T25.ByzantineReliableBroadcast;
+import pt.tecnico.hdlt.T25.ByzantineReliableBroadcastServiceGrpc;
+import pt.tecnico.hdlt.T25.LocationServer;
 import pt.tecnico.hdlt.T25.crypto.Crypto;
 import pt.tecnico.hdlt.T25.server.Domain.Exceptions.*;
 import pt.tecnico.hdlt.T25.server.Services.ByzantineReliableBroadcastServiceImpl;
@@ -23,7 +24,6 @@ import javax.crypto.spec.SecretKeySpec;
 import java.io.File;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
-import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.*;
@@ -37,6 +37,8 @@ public class Server {
     private String SERVER_RECOVERY_FILE_PATH;
     private String BACKUP_RECOVERY_FILE_PATH;
     private static final int SERVER_ORIGINAL_PORT = 8080;
+
+    private static final int PUZZLE_DIFFICULTY = 2;
 
     private int id;
     private int port;
@@ -598,7 +600,13 @@ public class Server {
         byte[] hashBytes = Crypto.getSHA256Hash(content + counter);
         String hash = Base64.getEncoder().encodeToString(hashBytes);
 
-        return hash.equals(clientHash) && hashBytes[0] == 0;
+        int i = 0;
+        while (i < PUZZLE_DIFFICULTY) {
+            if (hashBytes[i] != 0) return false;
+            i++;
+        }
+
+        return hash.equals(clientHash);
     }
 
     public LocationServer.SubmitLocationReportResponse submitLocationReport(LocationServer.SubmitLocationReportRequest report) throws IOException, GeneralSecurityException, DuplicateReportException, InvalidSignatureException, InvalidNumberOfProofsException, InterruptedException, InvalidProofOfWorkException {
@@ -611,7 +619,7 @@ public class Server {
 
         Location locationProver = objectMapper.readValue(locationProverContent, Location.class);
         SubmitLocationReportRequestHeader header = objectMapper.readValue(headerContent, SubmitLocationReportRequestHeader.class);
-        // TODO mais verificações
+
         int senderClientId = header.getClientId();
 
         Map<Integer, String> locationProofsContent = new HashMap<>();

@@ -239,12 +239,12 @@ public class Client extends AbstractClient {
     }
 
     public boolean submitLocationReportAtomic(int ep, int maxRequests) throws InterruptedException, GeneralSecurityException {
-        final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
-
-        if (maxRequests == -1) {
+        if (maxRequests == 0) {
             System.out.println("user" + getClientId() + ": Giving up trying to submit report!");
             return false;
         }
+
+        final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
 
         Consumer<LocationServer.SubmitLocationReportResponse> requestOnSuccessObserver = new Consumer<>() {
             @Override
@@ -485,7 +485,7 @@ public class Client extends AbstractClient {
                 }
                 case OBTAIN_LOCATION_REPORT: {
                     int ep = Integer.parseInt(args[1]);
-                    obtainLocationReportAtomic(this.getClientId(), ep);
+                    obtainLocationReportAtomic(this.getClientId(), ep, 5);
                     break;
                 }
                 case REQUEST_MY_PROOFS: {
