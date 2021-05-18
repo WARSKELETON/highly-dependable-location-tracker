@@ -31,7 +31,7 @@ public class ServerApp {
 		final String keystorePassword = "server" + serverId;
 
 		try {
-			new Server(serverId, numberOfUsers, step, maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, false, keystorePassword);
+			new Server(serverId, numberOfUsers, step, maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, keystorePassword, false);
 		} catch (IOException ex) {
 			System.err.println("Server crashed due to some internal error.");
 		} catch (GeneralSecurityException ex2) {

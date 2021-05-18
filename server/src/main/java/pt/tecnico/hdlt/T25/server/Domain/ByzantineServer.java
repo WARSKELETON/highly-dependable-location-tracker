@@ -23,8 +23,8 @@ public class ByzantineServer extends Server {
 
     private Flavor flavor;
 
-    public ByzantineServer(int serverId, int numberOfUsers, int step, int maxByzantineUsers, int maxNearbyByzantineUsers, int maxReplicas, int maxByzantineReplicas, boolean isTest, String keystorePassword) throws IOException, GeneralSecurityException, InterruptedException {
-        super(serverId, numberOfUsers, step, maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, isTest, keystorePassword);
+    public ByzantineServer(int serverId, int numberOfUsers, int step, int maxByzantineUsers, int maxNearbyByzantineUsers, int maxReplicas, int maxByzantineReplicas, String keystorePassword, boolean isTest) throws IOException, GeneralSecurityException, InterruptedException {
+        super(serverId, numberOfUsers, step, maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, keystorePassword, isTest);
         this.flavor = Flavor.BRBFOLLOWER;
     }
 

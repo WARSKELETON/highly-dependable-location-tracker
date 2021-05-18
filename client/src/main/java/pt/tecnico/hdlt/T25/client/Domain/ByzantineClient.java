@@ -90,7 +90,9 @@ public class ByzantineClient extends Client {
         return Crypto.verify(serverSignature, response.getServerSignature(), this.getServerPublicKey(Integer.parseInt(serverId)));
     }
 
-    public List<Location> obtainUsersAtLocationRegular(int latitude, int longitude, int ep) throws GeneralSecurityException, InterruptedException {
+    public List<Location> obtainUsersAtLocationRegular(int latitude, int longitude, int ep, int maxRequests) throws GeneralSecurityException, InterruptedException {
+        if (maxRequests == 0) return null;
+
         Map<Integer, Location> locations = new ConcurrentHashMap<>();
 
         final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
@@ -140,7 +142,7 @@ public class ByzantineClient extends Client {
                 System.out.println("user" + getClientId() + ": Report from user" + location.getUserId() + " ep " + location.getEp() + " coords at " + location.getLatitude() + ", " + location.getLongitude());
             }
         } else {
-            obtainUsersAtLocationRegular(latitude, longitude, ep);
+            obtainUsersAtLocationRegular(latitude, longitude, ep, --maxRequests);
         }
 
         return new ArrayList<>(locations.values());
@@ -356,7 +358,7 @@ public class ByzantineClient extends Client {
 
     @Override
     public boolean submitLocationReportAtomic(int ep, int maxRequests) throws InterruptedException, GeneralSecurityException {
-        if (maxRequests == -1) {
+        if (maxRequests == 0) {
             System.out.println("user" + getClientId() + ": Giving up trying to submit report!");
             return false;
         }
@@ -420,7 +422,9 @@ public class ByzantineClient extends Client {
     }
 
     @Override
-    public Location obtainLocationReportAtomic(int userId, int ep) throws GeneralSecurityException, InterruptedException, JsonProcessingException {
+    public Location obtainLocationReportAtomic(int userId, int ep, int maxRequests) throws GeneralSecurityException, InterruptedException, JsonProcessingException {
+        if (maxRequests == 0) return null;
+
         List<LocationServer.ObtainLocationReportResponse> reportResponses = new ArrayList<>();
 
         final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
@@ -472,8 +476,7 @@ public class ByzantineClient extends Client {
 
         for (int serverId : getLocationServerServiceStubs().keySet()) {
             LocationServer.ObtainLocationReportRequest request = this.buildObtainLocationReportRequest(userId, ep, this.getSeqNumbers().get(serverId), serverId);
-            obtainLocationReport(getLocationServerServiceStubs().get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver);
-            this.getSeqNumbers().put(serverId, this.getSeqNumbers().get(serverId) + 1);
+            obtainLocationReport(getLocationServerServiceStubs().get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver, serverId);
         }
 
         finishLatch.await(5, TimeUnit.SECONDS);
@@ -484,11 +487,15 @@ public class ByzantineClient extends Client {
             if (finishLatch.getCount() == 0 && reportResponses.isEmpty()) {
                 return null;
             } else {
-                obtainLocationReportAtomic(userId, ep);
+                obtainLocationReportAtomic(userId, ep, --maxRequests);
             }
         }
 
-        return obtainLocationFromReportResponse(reportResponses.get(0));
+        if (reportResponses.isEmpty()) {
+            return null;
+        } else {
+            return obtainLocationFromReportResponse(reportResponses.get(0));
+        }
     }
 
     @Override
@@ -515,7 +522,7 @@ public class ByzantineClient extends Client {
                 }
                 case OBTAIN_LOCATION_REPORT: {
                     int ep = Integer.parseInt(args[1]);
-                    obtainLocationReportAtomic(this.getClientId(), ep);
+                    obtainLocationReportAtomic(this.getClientId(), ep, 5);
                     break;
                 }
                 default:

@@ -37,7 +37,7 @@ public class ByzantineReliableBroadcastServiceImpl extends ByzantineReliableBroa
     }
 
     @Override
-    public void ready(ByzantineReliableBroadcast.RequestMsg request, StreamObserver<Empty> responseObserver) {
+    public void ready(ByzantineReliableBroadcast.ReadyMsg request, StreamObserver<Empty> responseObserver) {
         Context ctx = Context.current().fork();
         ctx.run(() -> {
             try {

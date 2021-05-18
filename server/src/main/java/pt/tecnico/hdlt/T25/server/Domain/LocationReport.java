@@ -1,6 +1,7 @@
 package pt.tecnico.hdlt.T25.server.Domain;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -13,6 +14,7 @@ public class LocationReport {
     private String locationProverSignature;
     private Map<Integer, String> locationProofsContent;
     private Map<Integer, String> locationProofsSignature;
+    private Map<Integer, Map<Integer, String>> locationProofsServerSignature;
 
     public LocationReport() {
     }
@@ -56,7 +58,15 @@ public class LocationReport {
         this.locationProofsSignature = locationProofsSignature;
     }
 
-    public ObjectNode toJson() throws JsonProcessingException {
+    public Map<Integer, Map<Integer, String>> getLocationProofsServerSignature() {
+        return locationProofsServerSignature;
+    }
+
+    public void setLocationProofsServerSignature(Map<Integer, Map<Integer, String>> locationProofsServerSignature) {
+        this.locationProofsServerSignature = locationProofsServerSignature;
+    }
+
+    public ObjectNode toJson() {
 
         ObjectMapper objectMapper = new ObjectMapper();
         ObjectNode node = objectMapper.createObjectNode();
@@ -65,6 +75,7 @@ public class LocationReport {
         node.put("locationProverSignature", this.locationProverSignature);
         node.set("locationProofsContent", objectMapper.convertValue(locationProofsContent, JsonNode.class));
         node.set("locationProofsSignature", objectMapper.convertValue(locationProofsSignature, JsonNode.class));
+        node.set("locationProofsServerSignature", objectMapper.convertValue(locationProofsServerSignature, JsonNode.class));
 
         return node;
     }

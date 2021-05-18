@@ -1,6 +1,7 @@
 package pt.tecnico.hdlt.T25.client.Domain;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.*;
 import io.grpc.stub.StreamObserver;
@@ -201,7 +202,6 @@ public class Client extends AbstractClient {
         Location myLocation = this.getMyLocation(ep);
 
         if (locationReport == null) {
-            // TODO returning null
             if (!createLocationReport(getClientId(), ep, myLocation.getLatitude(), myLocation.getLongitude())) return null;
             locationReport = locationReports.get(ep);
         }
@@ -239,12 +239,12 @@ public class Client extends AbstractClient {
     }
 
     public boolean submitLocationReportAtomic(int ep, int maxRequests) throws InterruptedException, GeneralSecurityException {
-        final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
-
-        if (maxRequests == -1) {
+        if (maxRequests == 0) {
             System.out.println("user" + getClientId() + ": Giving up trying to submit report!");
             return false;
         }
+
+        final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
 
         Consumer<LocationServer.SubmitLocationReportResponse> requestOnSuccessObserver = new Consumer<>() {
             @Override
@@ -277,10 +277,16 @@ public class Client extends AbstractClient {
             public void accept(Throwable throwable) {
                 synchronized (finishLatch) {
                     if (finishLatch.getCount() == 0) return;
+                    StatusRuntimeException exception = Status.fromThrowable(throwable).asRuntimeException();
+                    Metadata metadata = Status.trailersFromThrowable(throwable);
 
-                    if (throwable.getMessage().contains("ALREADY_EXISTS")) {
-                        System.out.println("user" + getClientId() + ": Duplicate report!");
-                        finishLatch.countDown();
+                    try {
+                        if (exception.getStatus().getCode() == Status.Code.ALREADY_EXISTS && verifyServerException(exception, metadata)) {
+                            System.out.println("user" + getClientId() + ": Caught ALREADY_EXISTS verified exception with message " + exception.getMessage());
+                            finishLatch.countDown();
+                        }
+                    } catch (GeneralSecurityException | JsonProcessingException e) {
+                        e.printStackTrace();
                     }
                 }
             }
@@ -321,6 +327,7 @@ public class Client extends AbstractClient {
     private Map<Pair<Integer, Integer>, LocationProof> verifyMyProofsResponse(int clientId, Set<Integer> eps, LocationServer.RequestMyProofsResponse response) throws GeneralSecurityException, JsonProcessingException {
         Map<Pair<Integer, Integer>, LocationProof> locationProofs = new HashMap<>();
         ObjectMapper objectMapper = new ObjectMapper();
+        TypeReference<Map<Integer, String>> typeRef = new TypeReference<>() {};
 
         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), this.getPrivateKey());
         if (secretKeySpec == null) return null;
@@ -334,26 +341,31 @@ public class Client extends AbstractClient {
             return null;
         }
 
-        for (LocationServer.LocationMessage locationProof : response.getLocationProofsList()) {
+        for (LocationServer.ProofsContent locationProof : response.getLocationProofsList()) {
             String locationProofContent = Crypto.decryptAES(secretKeySpec, locationProof.getContent());
             LocationProof proof = objectMapper.readValue(locationProofContent, LocationProof.class);
 
-            if (proof.getWitnessId() != clientId || !eps.contains(proof.getEp()) || !Crypto.verify(locationProofContent, locationProof.getSignature(), this.getUserPublicKey(proof.getWitnessId()))) {
+            if (proof.getWitnessId() != clientId || !eps.contains(proof.getEp()) || !Crypto.verify(locationProofContent, locationProof.getWitnessSignature(), this.getUserPublicKey(proof.getWitnessId()))) {
                 System.out.println("user" + getClientId() + ": Server" + serverId + " should not be trusted! Returned illegitimate proof! User " + clientId + " did not prove user" + proof.getUserId() + " location at " + proof.getEp() + " " + proof.getLatitude() + ", " + proof.getLongitude());
                 continue;
             }
-            locationProofs.put(new Pair<>(proof.getUserId(), proof.getEp()), proof);
+
+            Map<Integer, String> serverSignatures = objectMapper.readValue(locationProof.getServerSignatures(), typeRef);
+
+            System.out.println(locationProofContent);
+
+            if (verifyProofContainsBQ(proof, locationProofContent, serverSignatures, serverId)) locationProofs.put(new Pair<>(proof.getUserId(), proof.getEp()), proof);
         }
 
         return locationProofs;
     }
 
-    public List<LocationProof> requestMyProofsRegular(int userId, Set<Integer> eps) throws GeneralSecurityException, InterruptedException, JsonProcessingException {
+    public List<LocationProof> requestMyProofsRegular(int userId, Set<Integer> eps) throws GeneralSecurityException, InterruptedException {
         Map<Pair<Integer, Integer>, LocationProof> locationProofs = new HashMap<>();
 
         final CountDownLatch finishLatch = new CountDownLatch((getMaxReplicas() + getMaxByzantineReplicas()) / 2 + 1);
 
-        Consumer<LocationServer.RequestMyProofsResponse> requestObserver = new Consumer<>() {
+        Consumer<LocationServer.RequestMyProofsResponse> requestOnSuccessObserver = new Consumer<>() {
             @Override
             public void accept(LocationServer.RequestMyProofsResponse response)  {
                 synchronized (finishLatch) {
@@ -372,10 +384,28 @@ public class Client extends AbstractClient {
             }
         };
 
+        Consumer<Throwable> requestOnErrorObserver = new Consumer<>() {
+            @Override
+            public void accept(Throwable throwable) {
+                synchronized (finishLatch) {
+                    if (finishLatch.getCount() == 0) return;
+                    StatusRuntimeException exception = Status.fromThrowable(throwable).asRuntimeException();
+                    Metadata metadata = Status.trailersFromThrowable(throwable);
+
+                    try {
+                        if (verifyServerException(exception, metadata)) {
+                            System.out.println("user" + getClientId() + ": Caught verified exception with message " + exception.getMessage());
+                        }
+                    } catch (GeneralSecurityException | JsonProcessingException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        };
+
         for (int serverId : getLocationServerServiceStubs().keySet()) {
             LocationServer.RequestMyProofsRequest request = buildRequestMyProofsRequest(userId, eps, this.getSeqNumbers().get(serverId), serverId);
-            requestMyProofs(getLocationServerServiceStubs().get(serverId), request, requestObserver);
-            getSeqNumbers().put(serverId, getSeqNumbers().get(serverId) + 1);
+            requestMyProofs(getLocationServerServiceStubs().get(serverId), request, requestOnSuccessObserver, requestOnErrorObserver, serverId);
         }
 
         finishLatch.await(10, TimeUnit.SECONDS);
@@ -397,16 +427,19 @@ public class Client extends AbstractClient {
         }
     }
 
-    private void requestMyProofs(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.RequestMyProofsRequest request, Consumer<LocationServer.RequestMyProofsResponse> callback) throws GeneralSecurityException {
+    private void requestMyProofs(LocationServerServiceGrpc.LocationServerServiceStub locationServerServiceStub, LocationServer.RequestMyProofsRequest request, Consumer<LocationServer.RequestMyProofsResponse> callbackOnSuccess, Consumer<Throwable> callbackOnError, int serverId) {
         try {
             locationServerServiceStub.withDeadlineAfter(1, TimeUnit.SECONDS).requestMyProofs(request, new StreamObserver<>() {
                 @Override
                 public void onNext(LocationServer.RequestMyProofsResponse response) {
-                    callback.accept(response);
+                    getSeqNumbers().put(serverId, getSeqNumbers().get(serverId) + 1);
+                    callbackOnSuccess.accept(response);
                 }
 
                 @Override
                 public void onError(Throwable t) {
+                    getSeqNumbers().put(serverId, getSeqNumbers().get(serverId) + 1);
+                    callbackOnError.accept(t);
                 }
 
                 @Override
@@ -452,7 +485,7 @@ public class Client extends AbstractClient {
                 }
                 case OBTAIN_LOCATION_REPORT: {
                     int ep = Integer.parseInt(args[1]);
-                    obtainLocationReportAtomic(this.getClientId(), ep);
+                    obtainLocationReportAtomic(this.getClientId(), ep, 5);
                     break;
                 }
                 case REQUEST_MY_PROOFS: {
