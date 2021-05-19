@@ -352,8 +352,6 @@ public class Client extends AbstractClient {
 
             Map<Integer, String> serverSignatures = objectMapper.readValue(locationProof.getServerSignatures(), typeRef);
 
-            System.out.println(locationProofContent);
-
             if (verifyProofContainsBQ(proof, locationProofContent, serverSignatures, serverId)) locationProofs.put(new Pair<>(proof.getUserId(), proof.getEp()), proof);
         }
 

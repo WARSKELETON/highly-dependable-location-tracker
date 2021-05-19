@@ -511,8 +511,11 @@ abstract class AbstractClient {
         ObjectMapper objectMapper = new ObjectMapper();
         SecretKeySpec secretKeySpec = Crypto.decryptKeyWithRSA(response.getKey(), getPrivateKey());
         String locationProverContent = Crypto.decryptAES(secretKeySpec, response.getLocationProver().getContent());
+        Location location = objectMapper.readValue(locationProverContent, Location.class);
 
-        return objectMapper.readValue(locationProverContent, Location.class);
+        System.out.println("user" + getClientId() + ": Obtained legitimate report for user" + location.getUserId() + " at " + location.getEp() + " " + location.getLatitude() + ", " + location.getLongitude());
+
+        return location;
     }
 
     public Location obtainLocationReportAtomic(int userId, int ep, int maxRequests) throws GeneralSecurityException, InterruptedException, JsonProcessingException {
