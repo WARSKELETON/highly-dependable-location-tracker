@@ -27,6 +27,14 @@
         <mainclass>pt.tecnico.hdlt.T25.crypto.Crypto</mainclass>
     </properties>
 
+    <dependencies>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk15on</artifactId>
+            <version>1.68</version>
+        </dependency>
+    </dependencies>
+
     <build>
         <plugins>
             <!-- Plugin used to compile the sources of your project. Java 9 requires

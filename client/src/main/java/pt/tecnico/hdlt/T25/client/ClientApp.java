@@ -9,6 +9,7 @@ import pt.tecnico.hdlt.T25.client.Domain.HAClient;
 import pt.tecnico.hdlt.T25.client.Domain.SystemInfo;
 
 import java.io.File;
+import java.util.Arrays;
 
 public class ClientApp {
 
@@ -20,9 +21,9 @@ public class ClientApp {
 			System.out.printf("arg[%d] = %s%n", i, args[i]);
 		}
 
-		if (args.length < 7) {
+		if (args.length < 8) {
 			System.err.println("Argument(s) missing!");
-			System.err.printf("Usage: java %s serverHost serverPort clientId maxByzantineUsers maxNearbyByzantineUsers maxReplicas maxByzantineReplicas%n", ClientApp.class.getName());
+			System.err.printf("Usage: java %s serverHost serverPort clientId maxByzantineUsers maxNearbyByzantineUsers maxReplicas maxByzantineReplicas keystorePassword%n", ClientApp.class.getName());
 			return;
 		}
 
@@ -33,19 +34,20 @@ public class ClientApp {
 		final int maxNearbyByzantineUsers = Integer.parseInt(args[4]);
 		final int maxReplicas = Integer.parseInt(args[5]);
 		final int maxByzantineReplicas = Integer.parseInt(args[6]);
+		final String keystorePassword = args[7];
 
 		ObjectMapper objectMapper = new ObjectMapper();
 		SystemInfo systemInfo = objectMapper.readValue(new File("resources/grid.json"), SystemInfo.class);
 
 		try {
 			if (clientId == -1) {
-				new HAClient(serverHost, serverPort, clientId, systemInfo, false, maxByzantineUsers, maxReplicas, maxByzantineReplicas);
+				new HAClient(serverHost, serverPort, clientId, systemInfo, false, maxByzantineUsers, maxReplicas, maxByzantineReplicas, keystorePassword);
 			} else {
-				if (args.length == 8 && Boolean.parseBoolean(args[7])) {
+				if (args.length == 9 && Boolean.parseBoolean(args[8])) {
 					System.err.println("I am a byzantine user");
-					new ByzantineClient(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, ByzantineClient.Flavor.CONSPIRATOR, false, maxReplicas, maxByzantineReplicas);
+					new ByzantineClient(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, ByzantineClient.Flavor.CONSPIRATOR, false, maxReplicas, maxByzantineReplicas, keystorePassword);
 				} else {
-					new Client(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, false, maxReplicas, maxByzantineReplicas);
+					new Client(serverHost, serverPort, clientId, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, false, maxReplicas, maxByzantineReplicas, keystorePassword);
 				}
 			}
 		} catch (JsonProcessingException ex) {

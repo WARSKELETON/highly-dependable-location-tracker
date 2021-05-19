@@ -63,7 +63,7 @@ public class Server {
     private Map<Integer, ByzantineReliableBroadcastServiceGrpc.ByzantineReliableBroadcastServiceStub> brbStubs;
     private Map<Pair<Integer, Integer>, LocationReport> locationReports; // <UserId, Epoch> to Location Report
 
-    public Server(int serverId, int numberOfUsers, int step, int maxByzantineUsers, int maxNearbyByzantineUsers, int maxReplicas, int maxByzantineReplicas, boolean isTest) throws IOException, GeneralSecurityException, InterruptedException {
+    public Server(int serverId, int numberOfUsers, int step, int maxByzantineUsers, int maxNearbyByzantineUsers, int maxReplicas, int maxByzantineReplicas, String keystorePassword, boolean isTest) throws IOException, GeneralSecurityException, InterruptedException {
         this.id = serverId;
         this.SERVER_RECOVERY_FILE_PATH = "resources/server_state" + serverId + ".json";
         this.BACKUP_RECOVERY_FILE_PATH = "resources/backup_state" + serverId + ".json";
@@ -77,7 +77,7 @@ public class Server {
         this.initializeSeqNumbers();
         this.initializeBrb();
         this.locationReports = new ConcurrentHashMap<>();
-        this.privateKey = Crypto.getPriv("server" + this.id + "-priv.key");
+        this.privateKey = Crypto.getPriv("server" + this.id + ".jks", "server" + this.id,  keystorePassword);
         this.loadPublicKeys();
         this.loadPreviousState();
         this.startServer();
@@ -582,7 +582,6 @@ public class Server {
             }
 
             locationReport.setLocationProofsServerSignature(allLocationProofs);
-            System.out.println("Server" + this.id + ": " + locationReport.toJsonString());
         }
 
         locationReports.put(new Pair<>(locationProver.getUserId(), locationProver.getEp()), locationReport);
