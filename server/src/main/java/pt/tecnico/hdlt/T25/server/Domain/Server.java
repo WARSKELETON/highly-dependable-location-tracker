@@ -582,7 +582,6 @@ public class Server {
             }
 
             locationReport.setLocationProofsServerSignature(allLocationProofs);
-            System.out.println("Server" + this.id + ": " + locationReport.toJsonString());
         }
 
         locationReports.put(new Pair<>(locationProver.getUserId(), locationProver.getEp()), locationReport);
