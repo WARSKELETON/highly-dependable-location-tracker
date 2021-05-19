@@ -69,18 +69,18 @@ public class TestBase {
             for (int i = 0; i < maxReplicas; i++) {
                 System.out.println("Starting server with id " + i);
                 if (i != 3) {
-                    servers.put(i, new Server(i, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
+                    servers.put(i, new Server(i, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, "server" + i, true));
                 } else {
-                    byzantineServers.put(i, new ByzantineServer(i, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, true));
+                    byzantineServers.put(i, new ByzantineServer(i, systemInfo.getNumberOfUsers(), systemInfo.getStep(), maxByzantineUsers, maxNearbyByzantineUsers, maxReplicas, maxByzantineReplicas, "server" + i, true));
                 }
             }
 
-            haClient = new HAClient(serverHost, serverPort, -1, systemInfo, true, maxByzantineUsers, maxReplicas, maxByzantineReplicas);
+            haClient = new HAClient(serverHost, serverPort, -1, systemInfo, true, maxByzantineUsers, maxReplicas, maxByzantineReplicas, "ha");
             for (int i = 0; i < systemInfo.getNumberOfUsers(); i++) {
                 if (byzantineIds.contains(i)) {
-                    byzantineClients.put(i, new ByzantineClient(serverHost, serverPort, i, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, ByzantineClient.Flavor.SILENT, true, maxReplicas, maxByzantineReplicas));
+                    byzantineClients.put(i, new ByzantineClient(serverHost, serverPort, i, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, ByzantineClient.Flavor.SILENT, true, maxReplicas, maxByzantineReplicas, "client" + i));
                 } else {
-                    clients.put(i, new Client(serverHost, serverPort, i, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, true, maxReplicas, maxByzantineReplicas));
+                    clients.put(i, new Client(serverHost, serverPort, i, systemInfo, maxByzantineUsers, maxNearbyByzantineUsers, true, maxReplicas, maxByzantineReplicas, "client" + i));
                 }
             }
         }
