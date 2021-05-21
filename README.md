@@ -17,11 +17,18 @@ To compile and install all modules:
 ```shell script
 mvn clean compile install -DskipTests
 ```
-## Running the Test Suites
+## Running the Stage 1 Test Suites
 In the root project directory, run:
 
 ```shell script
-mvn verify
+mvn -Dit.test=Stage1IT verify
+```
+
+## Running the Stage 2 Test Suites
+In the root project directory, run:
+
+```shell script
+mvn -Dit.test=Stage2IT verify
 ```
 
 ----
