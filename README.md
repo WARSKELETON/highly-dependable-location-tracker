@@ -12,7 +12,19 @@ _The world pandemic we live in calls for dependable location tracking and contac
 | [server](server)     | Service Implementation|
 
 ## Building the Project
-To compile and install all modules:
+To compile and install the contract and then all the modules, in the root folder:
+
+```shell script
+cd contract
+```
+
+```shell script
+mvn clean compile install
+```
+
+```shell script
+cd ../
+```
 
 ```shell script
 mvn clean compile install -DskipTests
