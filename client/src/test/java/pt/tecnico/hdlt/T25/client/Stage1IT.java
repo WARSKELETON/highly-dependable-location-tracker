@@ -78,46 +78,6 @@ public class Stage1IT extends TestBase {
         Assertions.assertEquals(originalLocation.getLongitude(), locationResponse1.getLongitude());
     }
 
-    /*@Test
-    public void ReplayObtainReportRequest() throws GeneralSecurityException, InterruptedException, JsonProcessingException {
-        Client manInTheMiddle = null;
-        Client testClient = null;
-        for (Client client : clients.values()) {
-            if (client.getNearbyUsers(client.getMyLocation(0)).size() >= client.getMaxByzantineUsers() + client.getMaxNearbyByzantineUsers()) {
-                testClient = client;
-                break;
-            }
-        }
-
-        assert testClient != null;
-        System.out.println("user" + testClient.getClientId() + " building a correct report.");
-        Location originalLocation = testClient.getMyLocation(0);
-
-        boolean response = testClient.submitLocationReportAtomic(0, testClient.getMaxTriesBeforeTimeout());
-        assertTrue(response);
-
-        Location locationResponse = testClient.obtainLocationReportAtomic(testClient.getClientId(), 0);
-        Assertions.assertEquals(originalLocation.getUserId(), locationResponse.getUserId());
-        Assertions.assertEquals(originalLocation.getEp(), locationResponse.getEp());
-        Assertions.assertEquals(originalLocation.getLatitude(), locationResponse.getLatitude());
-        Assertions.assertEquals(originalLocation.getLongitude(), locationResponse.getLongitude());
-
-        System.out.println("Test client builds obtain location proof request.");
-        LocationServer.ObtainLocationReportRequest request = testClient.buildObtainLocationReportRequest(testClient.getClientId(), 0);
-
-        while (manInTheMiddle == null || manInTheMiddle.getClientId() == testClient.getClientId()) {
-            manInTheMiddle = clients.get(new ArrayList<>(clients.keySet()).get(new Random().nextInt(clients.keySet().size())));
-        }
-
-        System.out.println("Man in the middle tries to obtain same report.");
-        LocationServer.ObtainLocationReportResponse response = manInTheMiddle.obtainLocationReportAtomic();request);
-        PrivateKey privateKey = manInTheMiddle.getPrivateKey();
-
-        if (response != null) {
-            assertThrows(GeneralSecurityException.class, () -> Crypto.decryptKeyWithRSA(response.getKey(), privateKey));
-        }
-    } */
-
     @Test
     public void AutomaticCorrectReportWithReplayAndSufficientNeighbors() throws GeneralSecurityException, InterruptedException, JsonProcessingException {
         Map<Client, Integer> testClients = new HashMap<>();
