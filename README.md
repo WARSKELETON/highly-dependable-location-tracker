@@ -1,10 +1,16 @@
 # Highly Dependable Location Tracker 
 _The world pandemic we live in calls for dependable location tracking and contact tracing tools._
 
+This project was made in the scope of the _"Highly Dependable Systems"_ course at Instituto Superior Técnico. Check the [project-brief](project-brief) folder for more details on the project.
+
+Final Grade: _20_/_20_
+
 ## Structure
 
 | Module               |      Description      |
 | :------------------- | :-------------------: |
+| [project-brief](project-brief)     | Two Stages Project Briefs  |
+| [reports](reports)     | Two Stages Reports |
 | [client](client)     |  Service Invocations  |
 | [contract](contract) |   Proto Definitions   |
 | [generator](generator)|    Grid Generation   |
@@ -50,8 +56,7 @@ mvn -Dit.test=Stage2IT verify
 
 ### Team members
 
-| Number | Name              | User                                 | Email                                       |
-| -------|-------------------|--------------------------------------|---------------------------------------------|
-| 90704  | Andre Augusto     | <https://github.com/AndreAugusto11>  | <mailto:andre.augusto@tecnico.ulisboa.pt>   |
-| 90744  | Lucas Vicente     | <https://github.com/WARSKELETON>     | <mailto:lucasvicente@tecnico.ulisboa.pt>    |
-| 87678  | José Oliveira     | <https://github.com/zemfoliveira>    | <mailto:jose.f.oliveira@tecnico.ulisboa.pt> |
+| Name | University | More info |
+| ---- | ---- | ---- |
+| André Augusto | Instituto Superior Técnico | [<img src="https://i.ibb.co/brG8fnX/mail-6.png" width="17">](mailto:andre.9a@gmail.com "andre.9a@gmail.com") [<img src="https://github.githubassets.com/favicon.ico" width="17">](https://github.com/AndreAugusto11 "AndreAugusto11") [<img src="https://i.ibb.co/TvQPw7N/linkedin-logo.png" width="17">](https://www.linkedin.com/in/andreaaugusto/ "andreaaugusto") |
+| Lucas Vicente | Instituto Superior Técnico | [<img src="https://i.ibb.co/brG8fnX/mail-6.png" width="17">](mailto:lucasdhvicente@gmail.com "lucasdhvicente@gmail.com") [<img src="https://github.githubassets.com/favicon.ico" width="17">](https://github.com/WARSKELETON "WARSKELETON") [<img src="https://i.ibb.co/TvQPw7N/linkedin-logo.png" width="17">](https://www.linkedin.com/in/lucas-vicente-a91819184/ "lucas-vicente-a91819184") |
